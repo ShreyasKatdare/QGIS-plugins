@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/linecut" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>

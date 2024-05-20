@@ -1,0 +1,22 @@
+[general]
+name=Bivariate color polygon renderer
+qgisMinimumVersion=3.20
+description=Implementation of bivariate color renderer for polygon data.
+version=1.0.1
+author=Jan Caha
+email=jan.caha@outlook.com
+
+about=Implementation of bivariate color renderer for polygon data. Examples are shown here - https://www.joshuastevens.net/cartography/make-a-bivariate-choropleth-map/.
+
+tracker=https://github.com/JanCaha/qgis-plugin-bivariate-renderer/issues
+repository=https://github.com/JanCaha/qgis-plugin-bivariate-renderer
+
+tags=renderer
+
+homepage=https://jancaha.github.io/qgis-plugin-bivariate-renderer/
+# category=Plugins
+icon=icons/main_icon.png
+experimental=False
+deprecated=False
+category=Vector
+server=False
