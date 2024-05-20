@@ -90,7 +90,7 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
                     f"{village}.{map}_areas",
                     "postgres"
                 )
-        
+        # hello 
         if not layer.isValid():
             print("Layer failed to load!")
         else:
