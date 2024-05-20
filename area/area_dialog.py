@@ -90,7 +90,7 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
                     f"{village}.{map}_areas",
                     "postgres"
                 )
-        # hello 
+        
         if not layer.isValid():
             print("Layer failed to load!")
         else:
@@ -104,11 +104,15 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
     def calculate_area(self, point, button):
         features = self.layer.getFeatures()
         canvas = self.iface.mapCanvas()
-
+        feature = None
+        
         for featuree in features:
             if featuree.geometry().contains(point):
                 feature = featuree
                 break
+        
+        if feature is None:
+            return
         
         if button == Qt.RightButton:
             for annotation in self.annotations:
