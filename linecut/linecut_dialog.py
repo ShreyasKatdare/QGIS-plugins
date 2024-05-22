@@ -42,11 +42,13 @@ from qgis.core import (
     QgsRendererRange,
     QgsGraduatedSymbolRenderer,
     QgsFeature,
+    QgsLineSymbol,
     QgsGeometry,
     QgsSingleSymbolRenderer,
     QgsFillSymbol,
     QgsWkbTypes,
     QgsFeatureRequest,
+    QgsField,
     QgsPalLayerSettings,
     QgsVectorLayerSimpleLabeling,
     QgsTextFormat,
@@ -62,6 +64,7 @@ from qgis.gui import QgsMapCanvasAnnotationItem, QgsMapToolEmitPoint, QgsRubberB
 from qgis.gui import QgsMapToolEmitPoint
 from PyQt5.QtGui import QColor, QTextDocument
 from PyQt5.QtCore import QSizeF, QPointF, Qt
+from qgis.PyQt.QtCore import QVariant 
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -97,14 +100,14 @@ class LineDrawTool(QgsMapToolEmitPoint):
     def canvasReleaseEvent(self, e):
         # Add the point to the line when the mouse button is released
         if self.rubberBand:
-            self.points.append(self.toMapCoordinates(e.pos()))
-            self.rubberBand.addPoint(self.points[-1])
-            self.line = self.rubberBand.asGeometry()
-            self.canvas.unsetMapTool(self)
-            self.line_drawn.emit()
+            if len(self.points) <= 2:
+                self.points.append(self.toMapCoordinates(e.pos()))
+                self.rubberBand.addPoint(self.points[-1])
+                self.line = self.rubberBand.asGeometry()
+                self.canvas.unsetMapTool(self)
+                self.line_drawn.emit()
 
-    def deactivate(self):
-        self.points = []
+    
         
 
 #------------------------------------------------------------------------------#
@@ -121,26 +124,32 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self.iface = iface
         self.line = None
+        self.points = []
         self.ok_button.accepted.connect(self.load_map)
         self.polytocut = []
+        QgsProject.instance().layerWillBeRemoved.connect(self.remove_line)
         
     def load_map(self):
         village = self.village_in.text()
         map = self.map_in.text()
-        layer = QgsVectorLayer(map, 'map', 'ogr')
-        layer = QgsVectorLayer(
-                        f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
-                        f"{village}.{map}_colored",
-                        "postgres"
-                    )
-        
-        if not layer.isValid():
+        original_layer = QgsVectorLayer(
+            f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
+            f"{village}.{map}_colored",
+            "postgres"
+        )
+
+        if not original_layer.isValid():
             print("Layer failed to load!")
         else:
-            symbol = QgsFillSymbol.createSimple({'color' : 'orange'})
-            renderer = QgsSingleSymbolRenderer(symbol)
-            layer.setRenderer(renderer)
-            layer.triggerRepaint()
+            # Create a memory layer that is a copy of the original layer
+            layer = QgsVectorLayer("Polygon?crs=epsg:32643", "temporary_layer", "memory")
+            data_provider = layer.dataProvider()
+            data_provider.addAttributes(original_layer.fields())
+            layer.updateFields()
+            for feature in original_layer.getFeatures():
+                data_provider.addFeature(feature)
+
+            self.layer = layer
             QgsProject.instance().addMapLayer(layer)
             self.draw_line()
             
@@ -150,9 +159,11 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
         self.iface.mapCanvas().setMapTool(self.line_tool)
         
     def select_poly(self):
-        layer = self.iface.mapCanvas().currentLayer()
+        # layer = self.iface.mapCanvas().currentLayer()
+        layer = self.layer
         line = self.line_tool.line
         self.line = line
+        self.points = self.line_tool.points
         request = QgsFeatureRequest().setFilterRect(line.boundingBox())
         
         for feature in layer.getFeatures(request):
@@ -163,25 +174,69 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
         self.cut_poly()
         
     def cut_poly(self):
-        layer = self.iface.mapCanvas().currentLayer()
+        # layer = self.iface.mapCanvas().currentLayer()
+        layer = self.layer
         line = self.line
+        points = self.points
         layer.startEditing()
-        
+
         for feature_id in self.polytocut:
             feature = layer.getFeature(feature_id)
-            result, new_geometries, _ = feature.geometry().splitGeometry(line.asPolyline(), False)
+            print(f"Attempting to split feature ID {feature_id}, gid {feature.attribute('gid')} with geometry {feature.geometry().asWkt()} using line {line.asWkt()}")
+            geom = feature.geometry()
+            result, new_geometries, _ = geom.splitGeometry(line.asPolyline(), False)
+            
+            if result == 0:
+                self.visualize_geom_and_line(new_geometries[0], points)
+                self.visualize_geom_and_line(geom, points)
+                new_geometries.append(geom)
+                
+            else:
+                print("Split failed")
+                continue
 
-            # Delete the old feature
+            print(f"Number of new geometries: {len(new_geometries)}")
+            if len(new_geometries) != 2:
+                print("Unexpected number of geometries after split. Expected 2.")
+                continue
             layer.deleteFeature(feature_id)
-
             # Add the new polygons
             for new_geometry in new_geometries:
                 new_feature = QgsFeature()
                 new_feature.setGeometry(new_geometry)
+                new_feature.setAttributes(feature.attributes())
                 layer.addFeature(new_feature)
 
         # Commit the changes
         layer.commitChanges()
+        self.iface.mapCanvas().refreshAllLayers()
         
+    def remove_line(self):
+        if self.line_tool and self.line_tool.rubberBand:
+            self.line_tool.rubberBand.reset(QgsWkbTypes.LineGeometry)
 # ----------------------------------------------------------------- #
         
+    def visualize_geom_and_line(self, polygon_geom, line_points):
+        # Create a temporary memory layer for visualization
+        vl = QgsVectorLayer("Polygon?crs=EPSG:32643", "temp_layer2", "memory")
+        pr = vl.dataProvider()
+
+        # Add a field to store feature IDs
+        pr.addAttributes([QgsField("ID", QVariant.Int)])
+
+        # Create features for the polygon and line segment
+        polygon_feature = QgsFeature()
+        polygon_feature.setGeometry(polygon_geom)
+        polygon_feature.setAttributes([1])
+        pr.addFeatures([polygon_feature])
+
+        line_geom = QgsGeometry.fromPolylineXY([line_points[0], line_points[1]])
+        line_feature = QgsFeature()
+        line_feature.setGeometry(line_geom)
+        line_feature.setAttributes([2])
+        pr.addFeatures([line_feature])
+        # Add the layer to the map canvas
+        QgsProject.instance().addMapLayer(vl)
+
+        # Refresh the map canvas
+        self.iface.mapCanvas().refresh()
