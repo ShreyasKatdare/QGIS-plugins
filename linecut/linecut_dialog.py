@@ -21,7 +21,7 @@
  *                                                                         *
  ***************************************************************************/
 """
-
+import numpy as np
 import os
 from .psql import *
 
@@ -125,13 +125,19 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
         self.iface = iface
         self.line = None
         self.points = []
+        self.maxgid = 0
         self.ok_button.accepted.connect(self.load_map)
         self.polytocut = []
+        self.village = None
+        self.map = None
+        
         QgsProject.instance().layerWillBeRemoved.connect(self.remove_line)
         
     def load_map(self):
         village = self.village_in.text()
+        self.village = village
         map = self.map_in.text()
+        self.map = map
         original_layer = QgsVectorLayer(
             f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
             f"{village}.{map}_colored",
@@ -164,9 +170,10 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
         line = self.line_tool.line
         self.line = line
         self.points = self.line_tool.points
-        request = QgsFeatureRequest().setFilterRect(line.boundingBox())
+        # request = QgsFeatureRequest().setFilterRect(line.boundingBox())
         
-        for feature in layer.getFeatures(request):
+        for feature in layer.getFeatures():
+            self.maxgid = max(self.maxgid, feature.attribute('gid'))
             if feature.geometry().intersects(line):
                 layer.select(feature.id())
                 self.polytocut.append(feature.id())
@@ -187,8 +194,8 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
             result, new_geometries, _ = geom.splitGeometry(line.asPolyline(), False)
             
             if result == 0:
-                self.visualize_geom_and_line(new_geometries[0], points)
-                self.visualize_geom_and_line(geom, points)
+                # self.visualize_geom_and_line(new_geometries[0], points)
+                # self.visualize_geom_and_line(geom, points)
                 new_geometries.append(geom)
                 
             else:
@@ -200,14 +207,40 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
                 print("Unexpected number of geometries after split. Expected 2.")
                 continue
             layer.deleteFeature(feature_id)
-            # Add the new polygons
-            for new_geometry in new_geometries:
-                new_feature = QgsFeature()
-                new_feature.setGeometry(new_geometry)
-                new_feature.setAttributes(feature.attributes())
-                layer.addFeature(new_feature)
-
-        # Commit the changes
+            
+            new_feature = QgsFeature()
+            new_feature.setGeometry(new_geometries[0])
+            new_feature.setAttributes(feature.attributes())
+            ind = layer.fields().indexFromName('gid')
+            new_feature.setAttribute(ind, self.maxgid+1)
+            self.maxgid += 1
+            ind = layer.fields().indexFromName('description')
+            new_feature.setAttribute(ind, 'field')
+            varp = self.calculate_varp(new_geometries[0])
+            if np.isnan(varp):
+                varp = 1
+            print(f"Varp is {varp}")
+            ind = layer.fields().indexFromName('varp')
+            new_feature.setAttribute(ind, float(varp))
+            layer.addFeature(new_feature)
+            
+            new_feature = QgsFeature()
+            new_feature.setGeometry(new_geometries[1])
+            new_feature.setAttributes(feature.attributes())
+            ind = layer.fields().indexFromName('gid')
+            new_feature.setAttribute(ind, self.maxgid+1)
+            self.maxgid += 1
+            ind = layer.fields().indexFromName('description')
+            new_feature.setAttribute(ind, 'field')
+            varp = self.calculate_varp(new_geometries[1])
+            if np.isnan(varp):
+                varp = 1
+            print(f"Varp is {varp}")
+            ind = layer.fields().indexFromName('varp')
+            new_feature.setAttribute(ind, float(varp))
+            layer.addFeature(new_feature)
+            
+            
         layer.commitChanges()
         self.iface.mapCanvas().refreshAllLayers()
         
@@ -240,3 +273,27 @@ class linecutDialog(QtWidgets.QDialog, FORM_CLASS):
 
         # Refresh the map canvas
         self.iface.mapCanvas().refresh()
+
+    def calculate_varp(self, geom):
+        
+        points_list = [vertex for vertex in geom.vertices()]
+
+        points = points_list
+        points.append(points_list[1])
+        sum = 0
+        for i in range(len(points)-2):
+            a = np.array([float(points[i].x()), float(points[i].y())])
+            b = np.array([float(points[i+1].x()), float(points[i+1].y())])
+            c = np.array([float(points[i+2].x()), float(points[i+2].y())])
+
+            ba = b - a
+            bc = c - b
+            if (np.linalg.norm(ba) * np.linalg.norm(bc)) == 0 or np.dot(ba, bc)==0:
+                continue
+            cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+            angle = np.arccos(min(cosine_angle,1))
+            sum += abs(angle)
+
+        varp = sum/(2*np.pi)
+        
+        return varp
