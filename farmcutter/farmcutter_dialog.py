@@ -85,7 +85,6 @@ class LineDrawTool(QgsMapToolEmitPoint):
         super(LineDrawTool, self).__init__(self.canvas)
 
     def canvasPressEvent(self, e):
-        # Start a new line at the clicked point
         self.points = [self.toMapCoordinates(e.pos())]
         self.rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
         self.rubberBand.setColor(Qt.red)
@@ -93,12 +92,10 @@ class LineDrawTool(QgsMapToolEmitPoint):
         self.rubberBand.addPoint(self.points[0])
 
     def canvasMoveEvent(self, e):
-        # Update the end point of the line as the mouse is moved
         if self.rubberBand:
             self.rubberBand.movePoint(self.toMapCoordinates(e.pos()))
 
     def canvasReleaseEvent(self, e):
-        # Add the point to the line when the mouse button is released
         if self.rubberBand:
             if len(self.points) <= 2:
                 self.points.append(self.toMapCoordinates(e.pos()))
@@ -142,7 +139,6 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         if not original_layer.isValid():
             print("Layer failed to load!")
         else:
-            # Create a memory layer that is a copy of the original layer
             layer = QgsVectorLayer("Polygon?crs=epsg:32643", "temporary_layer", "memory")
             data_provider = layer.dataProvider()
             data_provider.addAttributes(original_layer.fields())
@@ -169,10 +165,8 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         vl = QgsVectorLayer("Polygon?crs=EPSG:32643", "buffer", "memory")
         pr = vl.dataProvider()
 
-        # Add a field to store feature IDs
         pr.addAttributes([QgsField("ID", QVariant.Int)])
 
-        # Create features for the polygon and line segment
         polygon_feature = QgsFeature()
         polygon_feature.setGeometry(buffer)
         polygon_feature.setAttributes([1])
