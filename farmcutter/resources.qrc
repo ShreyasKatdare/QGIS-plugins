@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/farmcutter" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
