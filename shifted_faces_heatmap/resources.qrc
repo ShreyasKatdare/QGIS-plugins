@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/shifted_faces_heatmap" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
