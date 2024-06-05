@@ -225,6 +225,13 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
             print("Farmplots failed to load!")
         else :
             self.farmplots_layer = layer
+            symbol = QgsFillSymbol.createSimple({'color': 'green'})
+            symbol.setOpacity(0.3)
+            renderer = QgsSingleSymbolRenderer(symbol)
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+            QgsProject.instance().addMapLayer(layer)
+            
             
         print("Loading Map")
         village = self.village
@@ -246,6 +253,10 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
                 data_provider.addFeature(feature)
 
             self.layer = layer
+            symbol = QgsFillSymbol.createSimple({'color': QColor(0,0,0,0), 'outline_color': QColor('#3579b1'), 'outline_width': '1'})
+            renderer = QgsSingleSymbolRenderer(symbol)
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
             self.vertexselector = VertexSelector(self.canvas, self.layer)
             self.mover = NewVertex(self.canvas, self.layer)
             QgsProject.instance().addMapLayer(layer)
@@ -280,7 +291,7 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
                     break
         
         print("Selected Features : ", self.ids_to_select)
-        self.layer.selectByIds(self.ids_to_select)
+        # self.layer.selectByIds(self.ids_to_select)
         
     def move_vertex(self):
         self.canvas.setMapTool(self.mover)
