@@ -68,10 +68,10 @@ from qgis.core import QgsVectorFileWriter, QgsDataSourceUri
 from PyQt5.QtCore import pyqtSignal
 from qgis.gui import QgsMapCanvasAnnotationItem, QgsMapToolEmitPoint, QgsRubberBand, QgsMapTool
 from qgis.gui import QgsMapToolEmitPoint
-from PyQt5.QtGui import QColor, QTextDocument
+from PyQt5.QtGui import QColor, QTextDocument, QFont
 from PyQt5.QtCore import QSizeF, QPointF, Qt
 from qgis.PyQt.QtCore import QVariant 
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QMessageBox, QAction
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QMessageBox, QAction, QFormLayout, QLabel, QPushButton
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -142,6 +142,8 @@ class NewVertex(QgsMapTool):
         self.canvas = canvas
         self.layer = layer
         self.newvertex = None
+        self.rbs = []
+        self.clearHighlight()
         
     def canvasPressEvent(self, event):
         self.newvertex = self.toMapCoordinates(event.pos())
@@ -150,7 +152,14 @@ class NewVertex(QgsMapTool):
         rubberBand.setToGeometry(QgsGeometry.fromPointXY(self.newvertex), self.layer)
         rubberBand.setColor(Qt.blue)
         rubberBand.setWidth(10)
+        self.rbs.append(rubberBand)
         self.finished.emit()
+    
+    def clearHighlight(self):
+        for rb in self.rbs:
+            self.canvas.scene().removeItem(rb)
+        self.rbs = []
+        self.newvertex = None
        
 
 class moverDialog(QtWidgets.QDialog, FORM_CLASS):
@@ -165,15 +174,48 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self.iface = iface
         self.canvas = iface.mapCanvas()
-        self.village = 'dagdagad'
-        self.map = 'survey_georeferenced'
-        self.farmplots = "farmplots"
+        self.ratingLabel.hide()
+        self.ratingCombo.hide()
+        self.defaultLabel.hide()
+        self.mapCombo.addItems(['survey_georeferenced', 'shifted_faces', 'jitter_spline_output_regularised_05', 'jitter_spline_output_regularised_03'])
+        self.ratingCombo.addItems(['worst_3_avg', 'all_avg'])
+        self.ratingCombo.setCurrentText('worst_3_avg')
+        self.hide = True
         self.pgconn = PGConn(psql)
-        self.ok_button.accepted.connect(self.load_map)
+        self.showButton.clicked.connect(self.show_hide)
+        self.ok_button.accepted.connect(self.initiate)
+        self.side_bar = None
+        QgsProject.instance().layerWillBeRemoved.connect(self.clean_up)
         
+    def initiate(self):
+        self.map = self.mapCombo.currentText()
+        self.village = self.village_in.text()
+        self.farmplots = "farmplots"
+        self.method = self.ratingCombo.currentText()
+
+        if self.side_bar is None:
+            self.side_bar = SideBar(self)
+            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
+
+        self.load_map()
+    
+    def show_hide(self):
+        if self.hide:
+            self.ratingLabel.show()
+            self.ratingCombo.show()
+            self.defaultLabel.show()
+            self.hide = False
+        else:
+            self.ratingLabel.hide()
+            self.ratingCombo.hide()
+            self.defaultLabel.hide()
+            self.hide = True    
+        
+      
     def load_map(self):
         village = self.village
         map = self.farmplots
+        print("Loading Farmplots")
         layer = QgsVectorLayer(
                         f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
                         f"{map}",
@@ -184,7 +226,7 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
         else :
             self.farmplots_layer = layer
             
-        
+        print("Loading Map")
         village = self.village
         map =  self.map
         original_layer = QgsVectorLayer(
@@ -207,16 +249,17 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
             self.vertexselector = VertexSelector(self.canvas, self.layer)
             self.mover = NewVertex(self.canvas, self.layer)
             QgsProject.instance().addMapLayer(layer)
-            self.set_up()
+            self.display_rating(self.layer, 'farm_rating')
+            # self.set_actions()
             
-    def set_up(self):
-        self.select_action = QAction("Select Vertex", self.iface.mainWindow())
-        self.select_action.triggered.connect(self.select_vertex)
-        self.iface.addToolBarIcon(self.select_action)
+    # def set_actions(self):
+    #     self.select_action = QAction("Select Vertex", self.iface.mainWindow())
+    #     self.select_action.triggered.connect(self.select_vertex)
+    #     self.iface.addToolBarIcon(self.select_action)
         
-        self.move_action = QAction("New vertex", self.iface.mainWindow())
-        self.move_action.triggered.connect(self.move_vertex)
-        self.iface.addToolBarIcon(self.move_action)
+    #     self.move_action = QAction("New vertex", self.iface.mainWindow())
+    #     self.move_action.triggered.connect(self.move_vertex)
+    #     self.iface.addToolBarIcon(self.move_action)
         
     def select_vertex(self):
         self.canvas.setMapTool(self.vertexselector)
@@ -257,14 +300,13 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
             
             new_geom = QgsGeometry.fromPolygonXY([new_vertices])
             feature.setGeometry(new_geom)
-            new_farmrating = self.calculate_farmrating(feature, 'worst_3_avg')
+            new_farmrating = self.calculate_farmrating(feature, self.method)
             feature.setAttribute('farm_rating', new_farmrating)
             self.layer.updateFeature(feature)
-        
-        # add_farm_rating(self.pgconn, self.village, 'temporary_layer', self.farmplots, 'farm_rating', 'all_avg')
-        
+                
         self.layer.commitChanges()
         self.canvas.refresh()
+        self.display_rating(self.layer, 'farm_rating')
         
         
     def calculate_farmrating(self, feature, method):
@@ -314,3 +356,62 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
                 return sum(ratings[:3]) / 3
             else:
                 return 0.0
+            
+    def clean_up(self, layer_id):
+        if self.layer is not None and self.layer.id() == layer_id:
+            
+            self.vertexselector.clearHighlight()
+            self.mover.clearHighlight()
+            
+            # self.iface.removeToolBarIcon(self.select_action)
+            # self.iface.removeToolBarIcon(self.move_action)
+
+            # try:
+            #     self.select_action.triggered.disconnect(self.select_vertex)
+            #     self.move_action.triggered.disconnect(self.move_vertex)
+            #     self.vertexselector.finished.disconnect(self.after_selection)
+            # except RuntimeError:
+            #     pass
+
+            if self.side_bar is not None:
+                self.iface.removeDockWidget(self.side_bar)
+                self.side_bar.deleteLater()
+                self.side_bar = None
+
+            self.layer = None
+            # self.select_action = None
+            # self.move_action = None
+            self.vertexselector = None
+            self.mover = None
+    
+    def display_rating(self, layer, field):
+        layer.setLabelsEnabled(True)
+
+        provider = QgsPalLayerSettings()
+        provider.fieldName = field
+        provider.placement = QgsPalLayerSettings.Horizontal
+
+        layer.setLabeling(QgsVectorLayerSimpleLabeling(provider))
+        layer.triggerRepaint()   
+
+class SideBar(QDockWidget):
+    def __init__(self, parent):
+        super(SideBar, self).__init__(parent)
+        form_layout = QFormLayout()
+        label1 = QLabel("Hello")
+        label1.setFont(QFont("Helvetica", 20))
+        
+        action1 = QPushButton("Select Vertex")
+        action2 = QPushButton("New Vertex")
+        action1.setFont(QFont("Helvetica", 15))
+        action2.setFont(QFont("Helvetica", 15))
+        action1.clicked.connect(parent.select_vertex)
+        action2.clicked.connect(parent.move_vertex)
+        
+        form_layout.addRow(label1)
+        form_layout.addRow(action1)
+        form_layout.addRow(action2)
+        
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form_layout)
+        self.setWidget(widget)
