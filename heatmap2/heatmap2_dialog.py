@@ -161,7 +161,7 @@ class heatmap2Dialog(QtWidgets.QDialog, FORM_CLASS):
             colors = [(0.0, QColor('#d7191c')), (0.8, QColor('#ffffc0')), (0.9, QColor('#1a9641')), (1.0, QColor('blue'))]
         
         elif field == "actual_area_diff":
-            colors = [(-100000, QColor('#ca0020')), (-0.05, QColor('#ec846e')), (-0.03, QColor('#f6d6c8')), (0.0, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (100000, QColor('blue'))]
+            colors = [(-100000, QColor('#ca0020')), (-0.05, QColor('#ec846e')), (-0.03, QColor('#f6d6c8')), (-0.01, QColor('#d3d3d3')), (0.01, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (100000, QColor('blue'))]
         ranges = []
         for i in range(len(colors) - 1):
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())

@@ -27,8 +27,7 @@ import os
 
 from qgis._gui import QgsMapMouseEvent
 from .psql import *
-from .utils import *
-from .postgres_utils import *
+
 
 import psycopg2
 import os
@@ -71,7 +70,7 @@ from qgis.gui import QgsMapToolEmitPoint
 from PyQt5.QtGui import QColor, QTextDocument, QFont
 from PyQt5.QtCore import QSizeF, QPointF, Qt
 from qgis.PyQt.QtCore import QVariant 
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QMessageBox, QAction, QFormLayout, QLabel, QPushButton
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QMessageBox, QAction, QFormLayout, QLabel, QPushButton, QRadioButton
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -174,17 +173,21 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self.iface = iface
         self.canvas = iface.mapCanvas()
+        self.side_bar = None
+        self.hide = True
+        self.param_selected = 'farm_rating'
+        self.history_vertices = []
+        self.new_vertices = []
+        
         self.ratingLabel.hide()
         self.ratingCombo.hide()
         self.defaultLabel.hide()
         self.mapCombo.addItems(['survey_georeferenced', 'shifted_faces', 'jitter_spline_output_regularised_05', 'jitter_spline_output_regularised_03'])
         self.ratingCombo.addItems(['worst_3_avg', 'all_avg'])
         self.ratingCombo.setCurrentText('worst_3_avg')
-        self.hide = True
-        self.pgconn = PGConn(psql)
         self.showButton.clicked.connect(self.show_hide)
         self.ok_button.accepted.connect(self.initiate)
-        self.side_bar = None
+        
         QgsProject.instance().layerWillBeRemoved.connect(self.clean_up)
         
     def initiate(self):
@@ -260,17 +263,9 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
             self.vertexselector = VertexSelector(self.canvas, self.layer)
             self.mover = NewVertex(self.canvas, self.layer)
             QgsProject.instance().addMapLayer(layer)
-            self.display_rating(self.layer, 'farm_rating')
-            # self.set_actions()
+            self.display_rating(self.layer, self.param_selected)
             
-    # def set_actions(self):
-    #     self.select_action = QAction("Select Vertex", self.iface.mainWindow())
-    #     self.select_action.triggered.connect(self.select_vertex)
-    #     self.iface.addToolBarIcon(self.select_action)
-        
-    #     self.move_action = QAction("New vertex", self.iface.mainWindow())
-    #     self.move_action.triggered.connect(self.move_vertex)
-    #     self.iface.addToolBarIcon(self.move_action)
+            
         
     def select_vertex(self):
         self.canvas.setMapTool(self.vertexselector)
@@ -282,6 +277,8 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
         features = self.layer.getFeatures()
         self.ids_to_select = []
         self.features_of_concern = []
+        
+        
         for feature in features:
             geom = feature.geometry()
             for vertex in geom.vertices():
@@ -291,7 +288,6 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
                     break
         
         print("Selected Features : ", self.ids_to_select)
-        # self.layer.selectByIds(self.ids_to_select)
         
     def move_vertex(self):
         self.canvas.setMapTool(self.mover)
@@ -300,6 +296,8 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
     def after_new_vertex(self):
         self.canvas.unsetMapTool(self.mover)
         self.layer.startEditing()
+        self.new_vertices.append(self.mover.newvertex)
+        self.history_vertices.append(self.vertexselector.selected_vertex)
         for feature in self.features_of_concern:
             geom = feature.geometry()
             new_vertices = []
@@ -317,7 +315,7 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
                 
         self.layer.commitChanges()
         self.canvas.refresh()
-        self.display_rating(self.layer, 'farm_rating')
+        self.display_rating(self.layer, self.param_selected)
         
         
     def calculate_farmrating(self, feature, method):
@@ -367,22 +365,13 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
                 return sum(ratings[:3]) / 3
             else:
                 return 0.0
-            
+    
+    
     def clean_up(self, layer_id):
         if self.layer is not None and self.layer.id() == layer_id:
             
             self.vertexselector.clearHighlight()
             self.mover.clearHighlight()
-            
-            # self.iface.removeToolBarIcon(self.select_action)
-            # self.iface.removeToolBarIcon(self.move_action)
-
-            # try:
-            #     self.select_action.triggered.disconnect(self.select_vertex)
-            #     self.move_action.triggered.disconnect(self.move_vertex)
-            #     self.vertexselector.finished.disconnect(self.after_selection)
-            # except RuntimeError:
-            #     pass
 
             if self.side_bar is not None:
                 self.iface.removeDockWidget(self.side_bar)
@@ -390,12 +379,11 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
                 self.side_bar = None
 
             self.layer = None
-            # self.select_action = None
-            # self.move_action = None
             self.vertexselector = None
             self.mover = None
     
     def display_rating(self, layer, field):
+        self.param_selected = field
         layer.setLabelsEnabled(True)
 
         provider = QgsPalLayerSettings()
@@ -403,14 +391,92 @@ class moverDialog(QtWidgets.QDialog, FORM_CLASS):
         provider.placement = QgsPalLayerSettings.Horizontal
 
         layer.setLabeling(QgsVectorLayerSimpleLabeling(provider))
-        layer.triggerRepaint()   
+        layer.triggerRepaint()
+        
+    def undo(self):
+        if len(self.history_vertices) == 0:
+            return
+
+        print("Undoing")
+        print(len(self.history_vertices), len(self.new_vertices))
+        old_vertex = self.history_vertices.pop()
+        new_vertex = self.new_vertices.pop()
+        self.layer.startEditing()
+        features = self.layer.getFeatures()
+        features_changing = []
+        for feature in features:
+            geom = feature.geometry()
+            for vertex in geom.vertices():
+                if QgsPointXY(vertex.x(), vertex.y()) == new_vertex:
+                    features_changing.append(feature)
+                    break
+        
+        for feature in features_changing:
+            geom = feature.geometry()
+            new_vertices = []
+            for vertex in geom.vertices():
+                if QgsPointXY(vertex.x(), vertex.y()) == new_vertex:
+                    new_vertices.append(QgsPointXY(old_vertex.x(), old_vertex.y()))
+                else:
+                    new_vertices.append(QgsPointXY(vertex.x(), vertex.y()))
+            
+            new_geom = QgsGeometry.fromPolygonXY([new_vertices])
+            feature.setGeometry(new_geom)
+            new_farmrating = self.calculate_farmrating(feature, self.method)
+            feature.setAttribute('farm_rating', new_farmrating)
+            self.layer.updateFeature(feature)
+        
+        self.layer.commitChanges()
+        self.canvas.refresh()
+        self.display_rating(self.layer, self.param_selected)
+
+    def generate_heatmap(self, attribute):
+        print("generating heatmap")
+        layer = self.layer
+        field = attribute
+        if field == "farm_rating":
+            colors = [(0.0, QColor('#d7191c')), (0.8, QColor('#ffffc0')), (0.9, QColor('#1a9641')), (1.0, QColor('blue'))]
+        
+        elif field == "actual_area_diff":
+            colors = [(-100000, QColor('#ca0020')), (-0.05, QColor('#ec846e')), (-0.03, QColor('#f6d6c8')), (-0.01, QColor('#d3d3d3')), (0.01, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (100000, QColor('blue'))]
+        ranges = []
+        for i in range(len(colors) - 1):
+            symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+            symbol.setColor(colors[i][1])
+            rng = QgsRendererRange(colors[i][0], colors[i+1][0], symbol, f"{100*colors[i][0]} - {100*colors[i+1][0]}")
+            ranges.append(rng)
+
+        renderer = QgsGraduatedSymbolRenderer(field, ranges)
+        layer.setRenderer(renderer)
+
+        layer.triggerRepaint()
+        self.iface.layerTreeView().refreshLayerSymbology(layer.id())
+        
+    def remove_heatmap(self):
+        print("removing heatmap")
+        layer = self.layer
+        symbol = QgsFillSymbol.createSimple({'color': QColor(0,0,0,0), 'outline_color': QColor('#3579b1'), 'outline_width': '1'})
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        layer.triggerRepaint()
+        self.iface.layerTreeView().refreshLayerSymbology(layer.id())
 
 class SideBar(QDockWidget):
     def __init__(self, parent):
         super(SideBar, self).__init__(parent)
+        self.parent = parent
         form_layout = QFormLayout()
         label1 = QLabel("Hello")
         label1.setFont(QFont("Helvetica", 20))
+        label2 = QLabel("Select Parameter to display")
+        label2.setFont(QFont("Helvetica", 20))
+        label3 = QLabel("Generate Heatmap")
+        label3.setFont(QFont("Helvetica", 20))
+        
+        parameter1 = QRadioButton("Farm Rating")
+        parameter2 = QRadioButton("Actual Area")
+        parameter3 = QRadioButton("Actual Area Difference")
+        parameter4 = QRadioButton("Excess Area")
+        
         
         action1 = QPushButton("Select Vertex")
         action2 = QPushButton("New Vertex")
@@ -419,10 +485,43 @@ class SideBar(QDockWidget):
         action1.clicked.connect(parent.select_vertex)
         action2.clicked.connect(parent.move_vertex)
         
+        undo = QPushButton("Undo")
+        undo.setFont(QFont("Helvetica", 15))
+        undo.clicked.connect(parent.undo)
+
+        parameter1.setFont(QFont("Helvetica", 15))
+        parameter2.setFont(QFont("Helvetica", 15))
+        parameter3.setFont(QFont("Helvetica", 15))
+        parameter4.setFont(QFont("Helvetica", 15))
+        
+        parameter1.clicked.connect(lambda: parent.display_rating(parent.layer, 'farm_rating'))
+        parameter2.clicked.connect(lambda: parent.display_rating(parent.layer, 'actual_area'))
+        parameter3.clicked.connect(lambda: parent.display_rating(parent.layer, 'actual_area_diff'))
+        parameter4.clicked.connect(lambda: parent.display_rating(parent.layer, 'excess_area'))
+    
+        rating_heatmap = QCheckBox("Farm rating")
+        rating_heatmap.setFont(QFont("Helvetica", 15))
+        rating_heatmap.stateChanged.connect(self.rating_heatmap)
+        
+        
         form_layout.addRow(label1)
         form_layout.addRow(action1)
         form_layout.addRow(action2)
+        form_layout.addRow(undo)
+        form_layout.addRow(label2)
+        form_layout.addRow(parameter1)
+        form_layout.addRow(parameter2)
+        form_layout.addRow(parameter3)
+        form_layout.addRow(parameter4)
+        form_layout.addRow(label3)
+        form_layout.addRow(rating_heatmap)
         
         widget = QtWidgets.QWidget()
         widget.setLayout(form_layout)
         self.setWidget(widget)
+
+    def rating_heatmap(self, state):
+        if state == Qt.Checked:
+            self.parent.generate_heatmap("farm_rating")
+        else:
+            self.parent.remove_heatmap()

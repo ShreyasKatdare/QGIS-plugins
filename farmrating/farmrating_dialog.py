@@ -57,9 +57,9 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapCanvasAnnotationItem
 from qgis.gui import QgsMapToolEmitPoint
-from PyQt5.QtGui import QColor, QTextDocument
+from PyQt5.QtGui import QColor, QTextDocument, QFont
 from PyQt5.QtCore import QSizeF, QPointF
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QWidget
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QWidget, QFormLayout, QLabel, QRadioButton, QPushButton
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -77,14 +77,15 @@ class farmratingDialog(QtWidgets.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
         self.iface = iface
+        self.side_bar = None
         self.village = "dagdagad"
         self.map = "shifted_faces"
         self.farmplots = "farmplots"
         self.tool = QgsMapToolEmitPoint(self.iface.mapCanvas())
-        self.tool.canvasClicked.connect(self.calculate_farmrating)
+        self.tool.canvasClicked.connect(self.display)
         self.annotations = []
         self.ok_button.accepted.connect(self.load_maps)
-        
+
     def load_maps(self):
         if self.annotations:
             self.close()
@@ -115,12 +116,20 @@ class farmratingDialog(QtWidgets.QDialog, FORM_CLASS):
         else :
             self.farmplots_layer = layer
         
-        
+        if self.side_bar is None:
+            self.side_bar = SideBar(self)
+            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
+
         self.layer.willBeDeleted.connect(self.clear_annotations)
         QgsProject.instance().layerWillBeRemoved.connect(self.layer_removed)
         self.iface.mapCanvas().setMapTool(self.tool)
             
-            
+    def display(self, point, button):
+        if self.param_selected == 'farm_rating':
+            self.calculate_farmrating(point, button)
+        elif self.param_selected == 'actual_area':
+            self.calculate_actual_area(point, button)
+    
     def calculate_farmrating(self, point, button):
         features = self.layer.getFeatures()
         canvas = self.iface.mapCanvas()
@@ -214,6 +223,52 @@ class farmratingDialog(QtWidgets.QDialog, FORM_CLASS):
             else:
                 return 0.0
         
+    def calculate_actual_area(self, point, button):
+        features = self.layer.getFeatures()
+        canvas = self.iface.mapCanvas()
+        feature = None
+        
+        for featuree in features:
+            if featuree.geometry().contains(point):
+                feature = featuree
+                break
+        
+        if feature is None:
+            return
+        
+        if button == Qt.RightButton:
+            for annotation in self.annotations:
+                if annotation.annotation().mapPosition() == feature.geometry().centroid().asPoint():
+                    canvas.scene().removeItem(annotation)
+                    self.annotations.remove(annotation)
+                    self.layer.deselect(feature.id())
+                    break            
+
+        else :
+            area = feature.geometry().area()
+            print(f"Actual Area: {area}")
+            self.layer.select(feature.id())
+            geom = feature.geometry()
+            point = geom.centroid().asPoint()
+            area = round(area, 6)
+            html = f"<h1>area: {area}</h1>"
+            a = QgsTextAnnotation()
+            c = QTextDocument()
+
+            c.setHtml(html)
+            a.setDocument(c)
+
+            a.setFrameSize(QSizeF(150, 50))
+            a.setMapLayer(self.layer)
+            a.setFrameOffsetFromReferencePoint(QtCore.QPointF(30, 30))
+            a.setMapPosition(point)
+            a.setMapPositionCrs(QgsCoordinateReferenceSystem(self.layer.crs()))
+            
+            i = QgsMapCanvasAnnotationItem(a, canvas)
+            self.annotations.append(i)
+    
+    
+    
     def clear_annotations(self):
         for annotation in self.annotations:
             self.iface.mapCanvas().scene().removeItem(annotation)
@@ -224,6 +279,50 @@ class farmratingDialog(QtWidgets.QDialog, FORM_CLASS):
             self.clear_annotations()
             self.layer = None
             
+        if self.side_bar is not None:
+                self.iface.removeDockWidget(self.side_bar)
+                self.side_bar.deleteLater()
+                self.side_bar = None
+            
     def close(self):
         self.clear_annotations()
         self.annotations = []
+    
+    def display_rating(self, layer, field):
+        self.param_selected = field
+        
+
+
+
+class SideBar(QDockWidget):
+    def __init__(self, parent):
+        super(SideBar, self).__init__(parent)
+        form_layout = QFormLayout()
+
+        label2 = QLabel("Select Parameter to display")
+        label2.setFont(QFont("Helvetica", 20))
+        
+        parameter1 = QRadioButton("Farm Rating")
+        parameter2 = QRadioButton("Actual Area")
+        parameter3 = QRadioButton("Actual Area Difference")
+        parameter4 = QRadioButton("Excess Area")        
+
+        parameter1.setFont(QFont("Helvetica", 15))
+        parameter2.setFont(QFont("Helvetica", 15))
+        parameter3.setFont(QFont("Helvetica", 15))
+        parameter4.setFont(QFont("Helvetica", 15))
+        
+        parameter1.clicked.connect(lambda: parent.display_rating(parent.layer, 'farm_rating'))
+        parameter2.clicked.connect(lambda: parent.display_rating(parent.layer, 'actual_area'))
+        parameter3.clicked.connect(lambda: parent.display_rating(parent.layer, 'actual_area_diff'))
+        parameter4.clicked.connect(lambda: parent.display_rating(parent.layer, 'excess_area'))
+    
+        form_layout.addRow(label2)
+        form_layout.addRow(parameter1)
+        form_layout.addRow(parameter2)
+        form_layout.addRow(parameter3)
+        form_layout.addRow(parameter4)
+        
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form_layout)
+        self.setWidget(widget)
