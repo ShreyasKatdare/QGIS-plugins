@@ -92,9 +92,8 @@ class new_heatmapDialog(QtWidgets.QDialog, FORM_CLASS):
         self.okbutton.accepted.connect(self.initiate)
         
     def initiate(self):
-        if self.side_bar is None:
-            self.side_bar = SideBar(self)
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
+        self.side_bar = SideBar(self)
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
 
     def generate_heatmap(self, field, method):
         print("generating heatmap")
@@ -165,9 +164,10 @@ class SideBar(QDockWidget):
         buttons = {}
             
         for field in fields:
-            buttons[field.name()] = QRadioButton(field.name())
-            buttons[field.name()].setFont(QFont("Helvetica", 13))
-            self.form_layout.addRow(buttons[field.name()])
+            if field.type() == QVariant.Double:
+                buttons[field.name()] = QRadioButton(field.name())
+                buttons[field.name()].setFont(QFont("Helvetica", 13))
+                self.form_layout.addRow(buttons[field.name()])
             
         for button in buttons.values():
             button.toggled.connect(lambda state, button=button: self.select_attribute(button.text()) if state else None)
