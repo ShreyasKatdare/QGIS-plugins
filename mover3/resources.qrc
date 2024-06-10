@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/mover3" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>

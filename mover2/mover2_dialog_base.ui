@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>moverDialogBase</class>
- <widget class="QDialog" name="moverDialogBase">
+ <class>mover2DialogBase</class>
+ <widget class="QDialog" name="mover2DialogBase">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -11,13 +11,13 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>mover</string>
+   <string>mover2</string>
   </property>
   <widget class="QDialogButtonBox" name="ok_button">
    <property name="geometry">
     <rect>
-     <x>300</x>
-     <y>460</y>
+     <x>290</x>
+     <y>470</y>
      <width>341</width>
      <height>32</height>
     </rect>
@@ -29,23 +29,20 @@
     <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
    </property>
   </widget>
-  <widget class="QPushButton" name="showButton">
+  <widget class="QComboBox" name="ratingCombo">
    <property name="geometry">
     <rect>
-     <x>10</x>
-     <y>270</y>
-     <width>87</width>
+     <x>190</x>
+     <y>310</y>
+     <width>121</width>
      <height>27</height>
     </rect>
-   </property>
-   <property name="text">
-    <string>Show More</string>
    </property>
   </widget>
   <widget class="QLabel" name="ratingLabel">
    <property name="geometry">
     <rect>
-     <x>10</x>
+     <x>20</x>
      <y>310</y>
      <width>171</width>
      <height>31</height>
@@ -61,20 +58,10 @@
     <string>Farm Rating Method</string>
    </property>
   </widget>
-  <widget class="QComboBox" name="ratingCombo">
-   <property name="geometry">
-    <rect>
-     <x>180</x>
-     <y>310</y>
-     <width>121</width>
-     <height>27</height>
-    </rect>
-   </property>
-  </widget>
   <widget class="QLabel" name="defaultLabel">
    <property name="geometry">
     <rect>
-     <x>320</x>
+     <x>330</x>
      <y>310</y>
      <width>281</width>
      <height>31</height>
@@ -84,68 +71,10 @@
     <string>( Default : worst_3_avg )</string>
    </property>
   </widget>
-  <widget class="QLabel" name="label_2">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>70</y>
-     <width>81</width>
-     <height>31</height>
-    </rect>
-   </property>
-   <property name="font">
-    <font>
-     <family>Droid Sans Fallback</family>
-     <pointsize>15</pointsize>
-    </font>
-   </property>
-   <property name="text">
-    <string>Map</string>
-   </property>
-  </widget>
-  <widget class="QComboBox" name="mapCombo">
-   <property name="geometry">
-    <rect>
-     <x>100</x>
-     <y>70</y>
-     <width>261</width>
-     <height>27</height>
-    </rect>
-   </property>
-  </widget>
-  <widget class="QLabel" name="villageLabel">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>30</y>
-     <width>81</width>
-     <height>31</height>
-    </rect>
-   </property>
-   <property name="font">
-    <font>
-     <family>Droid Sans Fallback</family>
-     <pointsize>14</pointsize>
-    </font>
-   </property>
-   <property name="text">
-    <string>Village</string>
-   </property>
-  </widget>
-  <widget class="QLineEdit" name="village_in">
-   <property name="geometry">
-    <rect>
-     <x>100</x>
-     <y>30</y>
-     <width>191</width>
-     <height>27</height>
-    </rect>
-   </property>
-  </widget>
   <widget class="QLabel" name="label">
    <property name="geometry">
     <rect>
-     <x>310</x>
+     <x>320</x>
      <y>30</y>
      <width>131</width>
      <height>21</height>
@@ -161,13 +90,84 @@
     <string>e.g. dagdagad</string>
    </property>
   </widget>
+  <widget class="QPushButton" name="showButton">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>270</y>
+     <width>87</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Show More</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="villageLabel">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>30</y>
+     <width>81</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <family>Droid Sans Fallback</family>
+     <pointsize>14</pointsize>
+    </font>
+   </property>
+   <property name="text">
+    <string>Village</string>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="mapCombo">
+   <property name="geometry">
+    <rect>
+     <x>110</x>
+     <y>70</y>
+     <width>261</width>
+     <height>27</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>70</y>
+     <width>81</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <family>Droid Sans Fallback</family>
+     <pointsize>15</pointsize>
+    </font>
+   </property>
+   <property name="text">
+    <string>Map</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="village_in">
+   <property name="geometry">
+    <rect>
+     <x>110</x>
+     <y>30</y>
+     <width>191</width>
+     <height>27</height>
+    </rect>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections>
   <connection>
    <sender>ok_button</sender>
    <signal>accepted()</signal>
-   <receiver>moverDialogBase</receiver>
+   <receiver>mover2DialogBase</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -183,7 +183,7 @@
   <connection>
    <sender>ok_button</sender>
    <signal>rejected()</signal>
-   <receiver>moverDialogBase</receiver>
+   <receiver>mover2DialogBase</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">
