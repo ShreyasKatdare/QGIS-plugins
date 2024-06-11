@@ -16,18 +16,18 @@ import unittest
 
 from qgis.PyQt.QtGui import QDialogButtonBox, QDialog
 
-from heatmap2_dialog import heatmap2Dialog
+from LGanalysis_dialog import LGanalysisDialog
 
 from utilities import get_qgis_app
 QGIS_APP = get_qgis_app()
 
 
-class heatmap2DialogTest(unittest.TestCase):
+class LGanalysisDialogTest(unittest.TestCase):
     """Test dialog works."""
 
     def setUp(self):
         """Runs before each test."""
-        self.dialog = heatmap2Dialog(None)
+        self.dialog = LGanalysisDialog(None)
 
     def tearDown(self):
         """Runs after each test."""
@@ -49,7 +49,7 @@ class heatmap2DialogTest(unittest.TestCase):
         self.assertEqual(result, QDialog.Rejected)
 
 if __name__ == "__main__":
-    suite = unittest.makeSuite(heatmap2DialogTest)
+    suite = unittest.makeSuite(LGanalysisDialogTest)
     runner = unittest.TextTestRunner(verbosity=2)
     runner.run(suite)
 

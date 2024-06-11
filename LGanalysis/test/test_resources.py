@@ -18,7 +18,7 @@ from qgis.PyQt.QtGui import QIcon
 
 
 
-class heatmap2DialogTest(unittest.TestCase):
+class LGanalysisDialogTest(unittest.TestCase):
     """Test rerources work."""
 
     def setUp(self):
@@ -31,12 +31,12 @@ class heatmap2DialogTest(unittest.TestCase):
 
     def test_icon_png(self):
         """Test we can click OK."""
-        path = ':/plugins/heatmap2/icon.png'
+        path = ':/plugins/LGanalysis/icon.png'
         icon = QIcon(path)
         self.assertFalse(icon.isNull())
 
 if __name__ == "__main__":
-    suite = unittest.makeSuite(heatmap2ResourcesTest)
+    suite = unittest.makeSuite(LGanalysisResourcesTest)
     runner = unittest.TextTestRunner(verbosity=2)
     runner.run(suite)
 

@@ -1,5 +1,5 @@
 <RCC>
-    <qresource prefix="/plugins/heatmap2" >
+    <qresource prefix="/plugins/LGanalysis" >
         <file>icon.png</file>
     </qresource>
 </RCC>

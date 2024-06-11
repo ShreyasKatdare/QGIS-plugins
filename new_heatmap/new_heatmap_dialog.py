@@ -91,6 +91,7 @@ class new_heatmapDialog(QtWidgets.QDialog, FORM_CLASS):
         self.side_bar = None
         self.okbutton.accepted.connect(self.initiate)
         
+        
     def initiate(self):
         self.side_bar = SideBar(self)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)

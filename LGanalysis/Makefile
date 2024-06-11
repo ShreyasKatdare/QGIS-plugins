@@ -1,5 +1,5 @@
 #/***************************************************************************
-# heatmap2
+# LGanalysis
 #
 # Heatmap analysis
 #							 -------------------
@@ -38,15 +38,15 @@ LOCALES =
 # translation
 SOURCES = \
 	__init__.py \
-	heatmap2.py heatmap2_dialog.py
+	LGanalysis.py LGanalysis_dialog.py
 
-PLUGINNAME = heatmap2
+PLUGINNAME = LGanalysis
 
 PY_FILES = \
 	__init__.py \
-	heatmap2.py heatmap2_dialog.py
+	LGanalysis.py LGanalysis_dialog.py
 
-UI_FILES = heatmap2_dialog_base.ui
+UI_FILES = LGanalysis_dialog_base.ui
 
 EXTRAS = metadata.txt icon.png
 
