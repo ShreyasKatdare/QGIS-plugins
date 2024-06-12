@@ -63,7 +63,8 @@ from qgis.core import (
     QgsAnnotation,
     QgsCoordinateReferenceSystem,
     QgsTextAnnotation,
-    QgsRuleBasedRenderer
+    QgsRuleBasedRenderer,
+    QgsGradientColorRamp
 )
 from qgis.gui import QgsMapCanvasAnnotationItem
 from qgis.gui import QgsMapToolEmitPoint
@@ -350,8 +351,10 @@ class LGanalysis:
             field = custom_field
             n = len(custom_ranges)
             print("n is ", n, custom_field, custom_ranges)
-            cmap = mcolors.LinearSegmentedColormap.from_list("mycmap", ['#d7191c', '#1a9641'])
-            colors = [mcolors.rgb2hex(cmap(i/(n-1))) for i in range(n)]
+            # cmap = mcolors.LinearSegmentedColormap.from_list("mycmap", ['#d7191c', '#1a9641'])
+            colorRamp = QgsGradientColorRamp.create({'color1': '#d7191c', 'color2': '#1a9641', 'stops': '0.5;#ffffbf'})
+            colors = [colorRamp.color(i/(n-1)).name() for i in range(n)]
+            colors = colors[::-1]
             print(colors)
             fin_ranges = []
             for i in range(n):

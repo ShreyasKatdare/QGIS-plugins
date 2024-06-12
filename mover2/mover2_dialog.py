@@ -91,7 +91,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.iface = iface
         self.canvas = iface.mapCanvas()
         self.side_bar = None
-        self.hide = True
+        self.hide_show_more = True
         self.param_selected = 'farm_rating'
         self.history_vertices = []
         self.new_vertices = []
@@ -109,8 +109,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.showButton.clicked.connect(self.show_hide)
         self.ok_button.accepted.connect(self.initiate)
         
-        
         QgsProject.instance().layerWillBeRemoved.connect(self.clean_up)
+    
     def initiate(self):
         self.map = self.mapCombo.currentText()
         self.village = self.village_in.text()
@@ -125,16 +125,16 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.load_map()
     
     def show_hide(self):
-        if self.hide:
+        if self.hide_show_more:
             self.ratingLabel.show()
             self.ratingCombo.show()
             self.defaultLabel.show()
-            self.hide = False
+            self.hide_show_more = False
         else:
             self.ratingLabel.hide()
             self.ratingCombo.hide()
             self.defaultLabel.hide()
-            self.hide = True    
+            self.hide_show_more = True    
         
       
     def load_map(self):
@@ -248,7 +248,11 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             new_vertices = []
             for vertex in geom.vertices():
                 if QgsPointXY(vertex.x(), vertex.y()) == self.vertexselector.selected_vertex:
+                    if self.is_corner.get((vertex.x(), vertex.y())) is not None:
+                        self.is_corner[(self.mover.newvertex.x(), self.mover.newvertex.y())] = True
                     new_vertices.append(QgsPointXY(self.mover.newvertex.x(), self.mover.newvertex.y()))
+
+                
                 elif self.is_present_as_first(vertex):
                     ratio = None
                     for point in self.points_to_transform:
@@ -269,8 +273,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.layer.commitChanges()
         self.canvas.refresh()
         self.display_rating(self.layer, self.param_selected)
-        
-        
+    
+    
     def calculate_farmrating(self, feature, method):
         if method == 'all_avg':
             geom_a = feature.geometry()
@@ -425,13 +429,18 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             point = geom.asPoint()
             tup = (point.x(), point.y())
             self.is_corner[tup] = True
-            print("Corner : ", point.x(), point.y())
+            # print("Corner : ", point.x(), point.y())
     
     def neighbour_vertices(self):
         self.corners()
+        self.points_to_transform = []
         features = self.features_of_concern
         geoms = []
+        just_neighbours = []
+        
+        self.layer.selectByIds(self.ids_to_select)
         for feature in features:
+            
             vertices = feature.geometry().vertices()
             ind = 0
             vertex_list = [vertex for vertex in vertices]
@@ -440,9 +449,19 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 if QgsPointXY(vertex.x(), vertex.y()) == self.vertexselector.selected_vertex:
                     break
                 ind += 1
-                
-            i = (ind + 1)%n
-            j = (ind - 1 + n)%n
+            
+            if ind == 0:
+                i = 1
+                j = n - 2
+            elif ind == n-1:
+                i = 1
+                j = n - 2
+            else:
+                i = (ind + 1)%n
+                j = (ind + n - 1)%n
+            print("OOOOOhhhhhNNNOOOO", ind, i, j, n)
+            just_neighbours.append(vertex_list[i])
+            just_neighbours.append(vertex_list[j])
             
             prev_vertex = vertex_list[ind]
             dist = 0
@@ -452,13 +471,16 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             corner2_ind = None
             
             while i != ind:
+                print("i = ", i)
                 point_xy = QgsPointXY(vertex_list[i].x(), vertex_list[i].y())
                 dist += prev_vertex.distance(vertex_list[i])
                 prev_vertex = vertex_list[i]
                 if self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
+                    print("corner found at i = ", i)
                     corner1_dist = dist
                     geom = QgsGeometry.fromPointXY(point_xy)
                     if geom not in geoms:
+                        print("appending corner as it was not previously marked")
                         geoms.append(geom)
                     corner1_ind = i
                     break
@@ -469,24 +491,34 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             dist = 0
             
             while j != ind:
+                print("j = ", j)
                 point_xy = QgsPointXY(vertex_list[j].x(), vertex_list[j].y())
                 dist += prev_vertex.distance(vertex_list[j])
                 prev_vertex = vertex_list[j]
                 if self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
+                    print("corner found at j = ", j)                    
                     corner2_dist = dist
                     geom = QgsGeometry.fromPointXY(point_xy)
                     if geom not in geoms:
+                        print("appending corner as it was not previously marked")
                         geoms.append(geom)
                     corner2_ind = j
                     break
                 
-                j = (j - 1 + n)%n
+                j = (j + n - 1)%n
             
             
             prev_vertex = vertex_list[ind]
             dist = 0
-            i = (ind + 1)%n
-            j = (ind - 1 + n)%n
+            if ind == 0:
+                i = 1
+                j = n - 2
+            elif ind == n-1:
+                i = 1
+                j = n - 2
+            else:
+                i = (ind + 1)%n
+                j = (ind + n - 1)%n
             
             
             while i != corner1_ind and i != ind:
@@ -504,7 +536,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 prev_vertex = vertex_list[j]
                 if not self.is_present_as_first(vertex_list[j]):
                     self.points_to_transform.append((vertex_list[j], (corner2_dist - dist)/ corner2_dist))
-                j = (j - 1 + n)%n
+                j = (j + n - 1)%n
                 
             print("neighbours : ", len(geoms))
             
@@ -523,6 +555,16 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             rubberBand.setColor(Qt.green)
             rubberBand.setWidth(10)
             self.rubber_bands.append(rubberBand)
+            
+        for point in just_neighbours:
+            point_xy = QgsPointXY(point.x(), point.y())
+            rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+            rubberBand.setToGeometry(QgsGeometry.fromPointXY(point_xy), self.layer)
+            rubberBand.setColor(Qt.blue)
+            rubberBand.setWidth(10)
+            self.rubber_bands.append(rubberBand)
+            
+        
 
     def transform(self, point):
         dx = self.mover.newvertex.x() - self.vertexselector.selected_vertex.x()
