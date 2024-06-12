@@ -223,3 +223,191 @@ def create_gist_index(psql_conn, schema, table, column):
     with psql_conn.connection().cursor() as curr:
         curr.execute(sql)
     
+    
+def get_corner_nodes(psql_conn, input_topo_schema, output_schema, output_table, angle_thresh=45, only_trijunctions=False, face_id=None):
+    cmt = '--' if face_id == None else ''
+    angle_thresh = int(angle_thresh)
+    sql = f'''
+        drop table if exists {output_schema}.{output_table};
+        create table {output_schema}.{output_table} as
+
+        with neigh as (
+            select
+                count(p.edge_id) as count,
+                n.node_id as node_id,
+                n.geom as geom
+            from
+                {input_topo_schema}.edge_data as p,
+                {input_topo_schema}.node as n
+            where
+                {cmt} (p.left_face = {face_id} or p.right_face = {face_id}) and
+                (p.start_node = n.node_id
+                or 
+                p.end_node = n.node_id)
+            group by
+                n.node_id
+        )
+
+        select
+            node_id,
+            geom,
+            count as degree
+        from
+            neigh
+        where
+            count > 2
+        ;
+    '''
+    with psql_conn.connection().cursor() as curr:
+        curr.execute(sql)
+        
+    if not only_trijunctions:
+        bounds = [angle_thresh, 180-angle_thresh, 180+angle_thresh, 360-angle_thresh]
+        sql_query = f"""
+            insert into {output_schema}.{output_table}
+
+            with neigh as (
+                select
+                    count(p.edge_id) as count,
+                    n.node_id as node_id,
+                    n.geom as geom
+                from
+                    {input_topo_schema}.edge as p,
+                    {input_topo_schema}.node as n
+                where
+                    {cmt} (p.left_face = {face_id} or p.right_face = {face_id}) and
+                    (p.start_node = n.node_id
+                    or 
+                    p.end_node = n.node_id)
+                group by
+                    n.node_id
+            )
+            
+            select 
+                n.node_id,
+                n.geom,
+                n.count as degree
+            from 
+                {input_topo_schema}.edge_data as p
+            join 
+                {input_topo_schema}.edge_data as q 
+                on 
+                    p.start_node = q.end_node
+            join 
+                neigh as n 
+                on 
+                    p.start_node = n.node_id    
+            where
+                {cmt} (p.left_face = {face_id} or p.right_face = {face_id}) and
+                {cmt} (q.left_face = {face_id} or q.right_face = {face_id}) and
+                n.count = 2
+                and
+                (
+                    (
+                        degrees(st_angle(p.geom,q.geom)) > {bounds[0]}
+                        and 
+                        degrees(st_angle(p.geom,q.geom)) < {bounds[1]}
+                    )
+                    or
+                    (
+                        degrees(st_angle(p.geom,q.geom)) > {bounds[2]}
+                        and 
+                        degrees(st_angle(p.geom,q.geom)) < {bounds[3]}
+                    )
+                )
+            ;
+        """
+        with psql_conn.connection().cursor() as curr:
+            curr.execute(sql_query)
+            
+            
+def get_geom_type(psql_conn, table):
+    sql = f"""
+        select geometrytype(geom) as geometry_type
+        from {table}
+        limit 1;
+    """
+    with psql_conn.connection().cursor() as curr:
+        curr.execute(sql)
+        type = curr.fetchone()
+        if type is None:
+            print("ERROR")
+            exit()
+        
+    return type[0]
+
+def create_topo(psql_conn, schema, topo_schema, input_table, tol=0, srid=32643, simplify_tol = 0, seg=True):
+    
+    type = get_geom_type(psql_conn, schema+'.'+input_table)
+    comment = "" if check_schema_exists(psql_conn, topo_schema) else "--"
+    
+    sql=f"""
+        {comment} select DropTopology('{topo_schema}');
+        with topo_id as (
+            select
+                topology_id
+            from
+                topology.layer
+            where
+                schema_name = '{schema}'
+                and
+                table_name = '{input_table}_t'
+                and
+                feature_column = 'topo'
+        ),
+        topo_name as (
+            select 
+                name
+            from
+                topology.topology as t,
+                topo_id as tid 
+            where
+                t.id = tid.topology_id
+            limit 1
+        )
+        select DropTopology(name) from topo_name;
+        select CreateTopology('{topo_schema}', {srid}, {tol});
+        
+        drop table if exists {schema}.{input_table}_t;
+        create table {schema}.{input_table}_t as table {schema}.{input_table};
+        
+        select AddTopoGeometryColumn('{topo_schema}', '{schema}', '{input_table}_t','topo', '{type}');
+        
+        update {schema}.{input_table}_t
+        set topo = totopogeom(geom,'{topo_schema}',layer_id(findlayer('{schema}','{input_table}_t','topo')));
+
+        update {topo_schema}.edge_data 
+        set geom = coalesce(st_simplify(geom, {simplify_tol}),geom);
+
+        --with points as (
+        --    select
+        --        (st_dumppoints(geom)).geom as geom
+        --    from 
+        --        {topo_schema}.edge_data
+        --) 
+        --select TopoGeo_AddPoint('{topo_schema}',geom, {tol}) from points;
+    """
+    
+    with psql_conn.connection().cursor() as curr:
+        curr.execute(sql)
+        
+    if seg:
+        segmentize(psql_conn, topo_schema, tol)
+        
+def segmentize(psql_conn, topo_name, seg_tol, seg_length = 10000):
+    sql_query=f"""
+        with edges as (
+            select edge_id, start_node, end_node, geom from {topo_name}.edge_data
+        ),
+        boundary as (
+            select
+                (st_dumppoints(st_segmentize(geom, {seg_length}))).geom as point
+            from
+                edges
+        )
+        
+        select topogeo_addpoint('{topo_name}', point, {seg_tol}) from boundary;
+    """
+    
+    with psql_conn.connection().cursor() as curr:
+        curr.execute(sql_query)

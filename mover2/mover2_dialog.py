@@ -98,6 +98,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.is_corner = {}
         self.rubber_bands = []
         self.points_to_transform = []
+        self.psql_conn = PGConn()
         
         self.ratingLabel.hide()
         self.ratingCombo.hide()
@@ -186,6 +187,17 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             QgsProject.instance().addMapLayer(layer)
             self.display_rating(self.layer, self.param_selected)
             
+        
+        # Create topo
+        print("Creating Topo")
+        self.topo_name = f"{village}_{map}_topo_new"
+        create_topo(self.psql_conn, self.village, self.topo_name, self.map)
+        
+        # Create corner nodes
+        print("Creating Corner Nodes")
+        self.corner_nodes       = f"corner_nodes_{self.map}"
+        get_corner_nodes(self.psql_conn, self.topo_name, self.village, self.corner_nodes)
+        
         map = self.corner_nodes
         original_layer = QgsVectorLayer(
             f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Point table=\"{village}\".\"{map}\" (geom)",
@@ -237,9 +249,13 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             for vertex in geom.vertices():
                 if QgsPointXY(vertex.x(), vertex.y()) == self.vertexselector.selected_vertex:
                     new_vertices.append(QgsPointXY(self.mover.newvertex.x(), self.mover.newvertex.y()))
-                elif vertex in self.points_to_transform:
-                    print("Hmmm")
-                    new_vertices.append(self.transform(QgsPointXY(vertex.x(), vertex.y())))
+                elif self.is_present_as_first(vertex):
+                    ratio = None
+                    for point in self.points_to_transform:
+                        if point[0] == vertex:
+                            ratio = point[1]
+                            break
+                    new_vertices.append(self.transform((QgsPointXY(vertex.x(), vertex.y()), ratio)))
                 
                 else:
                     new_vertices.append(QgsPointXY(vertex.x(), vertex.y()))
@@ -427,29 +443,68 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 
             i = (ind + 1)%n
             j = (ind - 1 + n)%n
+            
+            prev_vertex = vertex_list[ind]
+            dist = 0
+            corner1_dist = None
+            corner2_dist = None
+            corner1_ind = None
+            corner2_ind = None
+            
             while i != ind:
                 point_xy = QgsPointXY(vertex_list[i].x(), vertex_list[i].y())
+                dist += prev_vertex.distance(vertex_list[i])
+                prev_vertex = vertex_list[i]
                 if self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
-                    geom = QgsGeometry.fromPointXY(point_xy)
-                    geoms.append(geom)
-                    break
-                else:
-                    if vertex_list[i] not in self.points_to_transform:
-                        self.points_to_transform.append(vertex_list[i])
-                    i = (i + 1)%n
-                
-            
-            while j != ind:
-                point_xy = QgsPointXY(vertex_list[i].x(), vertex_list[i].y())
-                if self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
+                    corner1_dist = dist
                     geom = QgsGeometry.fromPointXY(point_xy)
                     if geom not in geoms:
                         geoms.append(geom)
+                    corner1_ind = i
                     break
-                else:
-                    if vertex_list[i] not in self.points_to_transform:
-                        self.points_to_transform.append(vertex_list[i])
-                    j = (j - 1 + n)%n
+                
+                i = (i + 1)%n
+            
+            prev_vertex = vertex_list[ind]
+            dist = 0
+            
+            while j != ind:
+                point_xy = QgsPointXY(vertex_list[j].x(), vertex_list[j].y())
+                dist += prev_vertex.distance(vertex_list[j])
+                prev_vertex = vertex_list[j]
+                if self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
+                    corner2_dist = dist
+                    geom = QgsGeometry.fromPointXY(point_xy)
+                    if geom not in geoms:
+                        geoms.append(geom)
+                    corner2_ind = j
+                    break
+                
+                j = (j - 1 + n)%n
+            
+            
+            prev_vertex = vertex_list[ind]
+            dist = 0
+            i = (ind + 1)%n
+            j = (ind - 1 + n)%n
+            
+            
+            while i != corner1_ind and i != ind:
+                dist += prev_vertex.distance(vertex_list[i])
+                prev_vertex = vertex_list[i]
+                if not self.is_present_as_first(vertex_list[i]):
+                    self.points_to_transform.append((vertex_list[i], (corner1_dist - dist)/corner1_dist))
+                i = (i + 1)%n
+                
+            prev_vertex = vertex_list[ind]
+            dist = 0
+            
+            while j != corner2_ind and j != ind:                
+                dist += prev_vertex.distance(vertex_list[j])
+                prev_vertex = vertex_list[j]
+                if not self.is_present_as_first(vertex_list[j]):
+                    self.points_to_transform.append((vertex_list[j], (corner2_dist - dist)/ corner2_dist))
+                j = (j - 1 + n)%n
                 
             print("neighbours : ", len(geoms))
             
@@ -462,7 +517,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             self.rubber_bands.append(rubberBand)
         
         for point in self.points_to_transform:
-            point_xy = QgsPointXY(point.x(), point.y())
+            point_xy = QgsPointXY(point[0].x(), point[0].y())
             rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
             rubberBand.setToGeometry(QgsGeometry.fromPointXY(point_xy), self.layer)
             rubberBand.setColor(Qt.green)
@@ -472,8 +527,20 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
     def transform(self, point):
         dx = self.mover.newvertex.x() - self.vertexselector.selected_vertex.x()
         dy = self.mover.newvertex.y() - self.vertexselector.selected_vertex.y()
-        point_transformed = QgsPointXY(point.x() + dx, point.y() + dy)
+        
+        point_transformed = QgsPointXY(point[0].x() + point[1]*dx, point[0].y() + point[1]*dy)
+        rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+        rubberBand.setToGeometry(QgsGeometry.fromPointXY(point_transformed), self.layer)
+        rubberBand.setColor(QColor(255, 165, 0))
+        rubberBand.setWidth(10)
+        self.rubber_bands.append(rubberBand)
         return point_transformed
+    
+    def is_present_as_first(self, element):
+        for sublist in self.points_to_transform:
+            if sublist[0] == element:
+                return True
+        return False
 #_______________________________________________________________________________________________________________________
 
 
