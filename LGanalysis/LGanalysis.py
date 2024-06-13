@@ -237,12 +237,12 @@ class LGanalysis:
         if self.dlg.lineEdit_jitter_spline.text():
             self.jitter_spline_in = self.dlg.lineEdit_jitter_spline.text()
         else:
-            self.jitter_spline_in = "jitter_spline_output_regularised_05"
+            self.jitter_spline_in = "jitter_spline_output_regularised_03"
             
         if self.dlg.lineEdit_jitter_polygon.text():
             self.jitter_polygon_in = self.dlg.lineEdit_jitter_polygon.text()
         else:
-            self.jitter_polygon_in = "jitter_polygons_regularised_05"
+            self.jitter_polygon_in = "jitter_polygons_regularised_03"
             
         self.heatmap_toggle = None
         
