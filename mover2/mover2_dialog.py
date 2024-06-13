@@ -99,11 +99,33 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.is_corner = {}
         self.rubber_bands = []
         self.points_to_transform = []
-        self.psql_conn = PGConn()
+        self.layer = None
+        
         
         self.ratingLabel.hide()
         self.ratingCombo.hide()
         self.defaultLabel.hide()
+        self.label_3.hide()
+        self.label_4.hide()
+        self.label_5.hide()
+        self.label_6.hide()
+        self.label_7.hide()
+        self.label_8.hide()
+        self.label_9.hide()
+        self.label_10.hide()
+        self.label_11.hide()
+        self.label_13.hide()
+        self.label_14.hide()
+        self.label_15.hide()
+        self.label_16.hide()
+        self.label_20.hide()
+        
+        self.lineEdit_farmplots.hide()
+        self.lineEdit_host.hide()
+        self.lineEdit_port.hide()
+        self.lineEdit_user.hide()
+        self.lineEdit_password.hide()
+        self.lineEdit_database.hide()
         self.mapCombo.addItems(['survey_georeferenced', 'shifted_faces', 'jitter_spline_output_regularised_05', 'jitter_spline_output_regularised_03', 'farm_graph_faces'])
         self.ratingCombo.addItems(['worst_3_avg', 'all_avg'])
         self.ratingCombo.setCurrentText('worst_3_avg')
@@ -130,15 +152,90 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             self.ratingLabel.show()
             self.ratingCombo.show()
             self.defaultLabel.show()
+            
+            self.label_3.show()
+            self.label_4.show()
+            self.label_5.show()
+            self.label_6.show()
+            self.label_7.show()
+            self.label_8.show()
+            self.label_9.show()
+            self.label_10.show()
+            self.label_11.show()
+            self.label_13.show()
+            self.label_14.show()
+            self.label_15.show()
+            self.label_16.show()
+            self.label_20.show()
+            
+            self.lineEdit_farmplots.show()
+            self.lineEdit_host.show()
+            self.lineEdit_port.show()
+            self.lineEdit_user.show()
+            self.lineEdit_password.show()
+            self.lineEdit_database.show()
+            
             self.hide_show_more = False
         else:
             self.ratingLabel.hide()
             self.ratingCombo.hide()
             self.defaultLabel.hide()
+            
+            self.label_3.hide()
+            self.label_4.hide()
+            self.label_5.hide()
+            self.label_6.hide()
+            self.label_7.hide()
+            self.label_8.hide()
+            self.label_9.hide()
+            self.label_10.hide()
+            self.label_11.hide()
+            self.label_13.hide()
+            self.label_14.hide()
+            self.label_15.hide()
+            self.label_16.hide()
+            self.label_20.hide()
+            
+            self.lineEdit_farmplots.hide()
+            self.lineEdit_host.hide()
+            self.lineEdit_port.hide()
+            self.lineEdit_user.hide()
+            self.lineEdit_password.hide()
+            self.lineEdit_database.hide()
+            
             self.hide_show_more = True    
         
       
     def load_map(self):
+        if self.lineEdit_farmplots.text() != "":
+            self.farmplots = self.lineEdit_farmplots.text()
+        
+        if self.lineEdit_host.text() != "":
+            psql['host'] = self.lineEdit_host.text()
+        else:
+            psql['host'] = 'localhost'
+            
+        if self.lineEdit_port.text() != "":
+            psql['port'] = self.lineEdit_port.text()
+        else:
+            psql['port'] = '5432'
+            
+        if self.lineEdit_user.text() != "":
+            psql['user'] = self.lineEdit_user.text()
+        else:
+            psql['user'] = "postgres"
+            
+        if self.lineEdit_password.text() != "":
+            psql['password'] = self.lineEdit_password.text()
+        else:
+            psql['password'] = "postgres"  
+        
+        if self.lineEdit_database.text() != "":
+            psql['database'] = self.lineEdit_database.text()        
+        else:
+            psql['database'] = "dolr"
+        
+        self.psql_conn = PGConn()
         village = self.village
         map = self.farmplots
         print("Loading Farmplots")
@@ -217,15 +314,16 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.canvas.unsetMapTool(self.mover)
         if self.vertexselector is not None:
             self.vertexselector.clearHighlight()
+        if self.mover is not None:
+            self.mover.clearHighlight()
+        self.RemoveHighlight()
         self.canvas.setMapTool(self.vertexselector)
         
     def after_selection(self):
         print("AFTER SELECTION CALLED !!!!!!!!!!!!!!!!!!")
         self.canvas.unsetMapTool(self.vertexselector)
         
-        if self.mover is not None:
-            self.mover.clearHighlight()
-        self.RemoveHighlight()
+        
         
         print("Selected Vertex : ", self.vertexselector.selected_vertex)
         features = self.layer.getFeatures()
@@ -343,6 +441,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
     
     def clean_up(self, layer_id):
         if self.layer is not None and self.layer.id() == layer_id:
+            self.canvas.unsetMapTool(self.vertexselector)
+            self.canvas.unsetMapTool(self.mover)
             
             self.vertexselector.clearHighlight()
             self.mover.clearHighlight()
@@ -353,9 +453,9 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 self.side_bar.deleteLater()
                 self.side_bar = None
 
-            self.layer = None
             self.vertexselector = None
             self.mover = None
+            self.layer = None
     
             for rb in self.rubber_bands:
                 self.canvas.scene().removeItem(rb)
@@ -516,7 +616,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 point_xy = QgsPointXY(vertex_list[i].x(), vertex_list[i].y())
                 dist += prev_vertex.distance(vertex_list[i])
                 prev_vertex = vertex_list[i]
-                if self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
+                if point_xy != self.vertexselector.selected_vertex and self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
                     print("corner found at i = ", i)
                     corner1_dist = dist
                     geom = QgsGeometry.fromPointXY(point_xy)
@@ -536,7 +636,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 point_xy = QgsPointXY(vertex_list[j].x(), vertex_list[j].y())
                 dist += prev_vertex.distance(vertex_list[j])
                 prev_vertex = vertex_list[j]
-                if self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
+                if point_xy != self.vertexselector.selected_vertex and self.is_corner.get((point_xy.x(), point_xy.y())) is not None:
                     print("corner found at j = ", j)                    
                     corner2_dist = dist
                     geom = QgsGeometry.fromPointXY(point_xy)
@@ -581,14 +681,6 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 
             print("neighbours : ", len(geoms))
             
-            
-        for geom in geoms:
-            rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
-            rubberBand.setToGeometry(geom, self.layer)
-            rubberBand.setColor(Qt.yellow)
-            rubberBand.setWidth(10)
-            self.rubber_bands.append(rubberBand)
-        
         for point in self.points_to_transform:
             point_xy = QgsPointXY(point[0].x(), point[0].y())
             rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
@@ -596,6 +688,20 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             rubberBand.setColor(Qt.green)
             rubberBand.setWidth(10)
             self.rubber_bands.append(rubberBand)
+            
+        rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+        rubberBand.setToGeometry(QgsGeometry.fromPointXY(self.vertexselector.selected_vertex), self.layer)
+        rubberBand.setColor(Qt.red)
+        rubberBand.setWidth(10)
+        self.rubber_bands.append(rubberBand)
+        
+        for geom in geoms:
+            rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+            rubberBand.setToGeometry(geom, self.layer)
+            rubberBand.setColor(Qt.yellow)
+            rubberBand.setWidth(10)
+            self.rubber_bands.append(rubberBand)
+        
             
     
     def RemoveHighlight(self):
