@@ -93,8 +93,9 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.side_bar = None
         self.hide_show_more = True
         self.param_selected = 'farm_rating'
-        self.history_vertices = []
-        self.new_vertices = []
+        self.history_old_vertices = []
+        self.history_new_vertices = []
+        self.history_transformed_vertices = []
         self.is_corner = {}
         self.rubber_bands = []
         self.points_to_transform = []
@@ -182,8 +183,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             renderer = QgsSingleSymbolRenderer(symbol)
             layer.setRenderer(renderer)
             layer.triggerRepaint()
-            self.vertexselector = VertexSelector(self.canvas, self.layer)
-            self.mover = NewVertex(self.canvas, self.layer)
+            self.vertexselector = VertexSelector(self.canvas, self.layer, self)
+            self.mover = NewVertex(self.canvas, self.layer, self)
             QgsProject.instance().addMapLayer(layer)
             self.display_rating(self.layer, self.param_selected)
             
@@ -209,14 +210,23 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             print("Layer failed to load!")
         else:
             self.corner_nodes_layer = original_layer
-            
+        
+        self.corners()
         
     def select_vertex(self):
+        self.canvas.unsetMapTool(self.mover)
+        if self.vertexselector is not None:
+            self.vertexselector.clearHighlight()
         self.canvas.setMapTool(self.vertexselector)
-        self.vertexselector.finished.connect(self.after_selection)
-
+        
     def after_selection(self):
+        print("AFTER SELECTION CALLED !!!!!!!!!!!!!!!!!!")
         self.canvas.unsetMapTool(self.vertexselector)
+        
+        if self.mover is not None:
+            self.mover.clearHighlight()
+        self.RemoveHighlight()
+        
         print("Selected Vertex : ", self.vertexselector.selected_vertex)
         features = self.layer.getFeatures()
         self.ids_to_select = []
@@ -233,16 +243,18 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         
         print("Selected Features : ", self.ids_to_select)
         self.neighbour_vertices()
+        self.move_vertex()
         
     def move_vertex(self):
         self.canvas.setMapTool(self.mover)
-        self.mover.finished.connect(self.after_new_vertex)
         
     def after_new_vertex(self):
+        print("AFTER NEW VERTEX CALLED !!!!!!!!!!!!!!!!!!")
         self.canvas.unsetMapTool(self.mover)
         self.layer.startEditing()
-        self.new_vertices.append(self.mover.newvertex)
-        self.history_vertices.append(self.vertexselector.selected_vertex)
+        self.history_new_vertices.append(self.mover.newvertex)
+        self.history_old_vertices.append(self.vertexselector.selected_vertex)
+        transformed_vertices = []
         for feature in self.features_of_concern:
             geom = feature.geometry()
             new_vertices = []
@@ -253,26 +265,31 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                     new_vertices.append(QgsPointXY(self.mover.newvertex.x(), self.mover.newvertex.y()))
 
                 
-                elif self.is_present_as_first(vertex):
+                elif self.is_present_as_first(vertex, self.points_to_transform):
                     ratio = None
                     for point in self.points_to_transform:
                         if point[0] == vertex:
                             ratio = point[1]
                             break
-                    new_vertices.append(self.transform((QgsPointXY(vertex.x(), vertex.y()), ratio)))
-                
+                    transformed_vertex = self.transform(self.vertexselector.selected_vertex, self.mover.newvertex, (QgsPointXY(vertex.x(), vertex.y()), ratio))
+                    new_vertices.append(transformed_vertex)
+                    transformed_vertices.append((transformed_vertex, ratio))
+
                 else:
                     new_vertices.append(QgsPointXY(vertex.x(), vertex.y()))
+            
             
             new_geom = QgsGeometry.fromPolygonXY([new_vertices])
             feature.setGeometry(new_geom)
             new_farmrating = self.calculate_farmrating(feature, self.method)
             feature.setAttribute('farm_rating', new_farmrating)
             self.layer.updateFeature(feature)
-                
+        
+        self.history_transformed_vertices.append(transformed_vertices)        
         self.layer.commitChanges()
         self.canvas.refresh()
         self.display_rating(self.layer, self.param_selected)
+        self.select_vertex()
     
     
     def calculate_farmrating(self, feature, method):
@@ -329,7 +346,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             
             self.vertexselector.clearHighlight()
             self.mover.clearHighlight()
-            
+            self.canvas.setMapTool(None)
             
             if self.side_bar is not None:
                 self.iface.removeDockWidget(self.side_bar)
@@ -356,13 +373,30 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         layer.triggerRepaint()
         
     def undo(self):
-        if len(self.history_vertices) == 0:
+        if len(self.history_old_vertices) == 0:
             return
 
+        self.RemoveHighlight()
+        self.vertexselector.clearHighlight()
+        self.mover.clearHighlight()
+        
         print("Undoing")
-        print(len(self.history_vertices), len(self.new_vertices))
-        old_vertex = self.history_vertices.pop()
-        new_vertex = self.new_vertices.pop()
+        print(len(self.history_old_vertices), len(self.history_new_vertices))
+        old_vertex = self.history_old_vertices.pop()
+        new_vertex = self.history_new_vertices.pop()
+        transformed_vertices = self.history_transformed_vertices.pop()
+        print("TRANSFORMED VERTICES : ")
+        print(transformed_vertices)
+        
+        for vertex in transformed_vertices:
+            vertex_xy = QgsPointXY(vertex[0].x(), vertex[0].y())
+            rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+            rubberBand.setToGeometry(QgsGeometry.fromPointXY(vertex_xy), self.layer)
+            rubberBand.setColor(Qt.blue)
+            rubberBand.setWidth(10)
+            self.rubber_bands.append(rubberBand)
+            
+        
         self.layer.startEditing()
         features = self.layer.getFeatures()
         features_changing = []
@@ -373,12 +407,25 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                     features_changing.append(feature)
                     break
         
+        
         for feature in features_changing:
             geom = feature.geometry()
             new_vertices = []
             for vertex in geom.vertices():
                 if QgsPointXY(vertex.x(), vertex.y()) == new_vertex:
                     new_vertices.append(QgsPointXY(old_vertex.x(), old_vertex.y()))
+                
+                elif self.is_present_as_first(vertex, transformed_vertices):
+                    print("UNDOING ON TRANSFORMED VERTICES ")
+                    ratio = None
+                    point_needed = QgsPointXY(vertex.x(), vertex.y())
+                    for point in transformed_vertices:
+                        point_xy = QgsPointXY(point[0].x(), point[0].y())
+                        if point_xy.x() == point_needed.x() and point_xy.y() == point_needed.y():
+                            ratio = point[1]
+                            break
+                    new_vertices.append(self.transform(new_vertex, old_vertex, (QgsPointXY(vertex.x(), vertex.y()), ratio)))
+                
                 else:
                     new_vertices.append(QgsPointXY(vertex.x(), vertex.y()))
             
@@ -423,22 +470,18 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.iface.layerTreeView().refreshLayerSymbology(layer.id())
 
     def corners(self):
-        print("hello")
         for feature in self.corner_nodes_layer.getFeatures():
             geom = feature.geometry()
             point = geom.asPoint()
             tup = (point.x(), point.y())
             self.is_corner[tup] = True
-            # print("Corner : ", point.x(), point.y())
     
     def neighbour_vertices(self):
-        self.corners()
         self.points_to_transform = []
         features = self.features_of_concern
+        print("number of features of concern : ", len(self.features_of_concern))
         geoms = []
-        just_neighbours = []
         
-        self.layer.selectByIds(self.ids_to_select)
         for feature in features:
             
             vertices = feature.geometry().vertices()
@@ -460,8 +503,6 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 i = (ind + 1)%n
                 j = (ind + n - 1)%n
             print("OOOOOhhhhhNNNOOOO", ind, i, j, n)
-            just_neighbours.append(vertex_list[i])
-            just_neighbours.append(vertex_list[j])
             
             prev_vertex = vertex_list[ind]
             dist = 0
@@ -524,7 +565,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             while i != corner1_ind and i != ind:
                 dist += prev_vertex.distance(vertex_list[i])
                 prev_vertex = vertex_list[i]
-                if not self.is_present_as_first(vertex_list[i]):
+                if not self.is_present_as_first(vertex_list[i], self.points_to_transform):
                     self.points_to_transform.append((vertex_list[i], (corner1_dist - dist)/corner1_dist))
                 i = (i + 1)%n
                 
@@ -534,7 +575,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             while j != corner2_ind and j != ind:                
                 dist += prev_vertex.distance(vertex_list[j])
                 prev_vertex = vertex_list[j]
-                if not self.is_present_as_first(vertex_list[j]):
+                if not self.is_present_as_first(vertex_list[j], self.points_to_transform):
                     self.points_to_transform.append((vertex_list[j], (corner2_dist - dist)/ corner2_dist))
                 j = (j + n - 1)%n
                 
@@ -556,21 +597,18 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             rubberBand.setWidth(10)
             self.rubber_bands.append(rubberBand)
             
-        for point in just_neighbours:
-            point_xy = QgsPointXY(point.x(), point.y())
-            rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
-            rubberBand.setToGeometry(QgsGeometry.fromPointXY(point_xy), self.layer)
-            rubberBand.setColor(Qt.blue)
-            rubberBand.setWidth(10)
-            self.rubber_bands.append(rubberBand)
-            
-        
+    
+    def RemoveHighlight(self):
+        for rb in self.rubber_bands:
+            self.canvas.scene().removeItem(rb)
+            del rb
+        self.rubber_bands = []
 
-    def transform(self, point):
-        dx = self.mover.newvertex.x() - self.vertexselector.selected_vertex.x()
-        dy = self.mover.newvertex.y() - self.vertexselector.selected_vertex.y()
+    def transform(self, old_vertex, new_vertex, point_and_ratio):
+        dx = new_vertex.x() - old_vertex.x()
+        dy = new_vertex.y() - old_vertex.y()
         
-        point_transformed = QgsPointXY(point[0].x() + point[1]*dx, point[0].y() + point[1]*dy)
+        point_transformed = QgsPointXY(point_and_ratio[0].x() + point_and_ratio[1]*dx, point_and_ratio[0].y() + point_and_ratio[1]*dy)
         rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
         rubberBand.setToGeometry(QgsGeometry.fromPointXY(point_transformed), self.layer)
         rubberBand.setColor(QColor(255, 165, 0))
@@ -578,11 +616,23 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.rubber_bands.append(rubberBand)
         return point_transformed
     
-    def is_present_as_first(self, element):
-        for sublist in self.points_to_transform:
-            if sublist[0] == element:
+    def is_present_as_first(self, element, list):
+        point_xy = QgsPointXY(element.x(), element.y())
+        for sublist in list:
+            point_xy_2 = QgsPointXY(sublist[0].x(), sublist[0].y())
+            if point_xy.x() == point_xy_2.x() and point_xy.y() == point_xy_2.y():
                 return True
         return False
+    
+    def deactivate(self):
+        if self.vertexselector is not None:
+            self.vertexselector.clearHighlight()
+        if self.mover is not None:
+            self.mover.clearHighlight()
+        self.canvas.unsetMapTool(self.vertexselector)
+        self.canvas.unsetMapTool(self.mover)
+        self.RemoveHighlight()
+        
 #_______________________________________________________________________________________________________________________
 
 
@@ -604,12 +654,12 @@ class SideBar(QDockWidget):
         parameter4 = QRadioButton("Excess Area")
         
         
-        action1 = QPushButton("Select Vertex")
-        action2 = QPushButton("New Vertex")
+        action1 = QPushButton("Start Editing")
+        action2 = QPushButton("Stop Editing")
         action1.setFont(QFont("Helvetica", 15))
         action2.setFont(QFont("Helvetica", 15))
         action1.clicked.connect(parent.select_vertex)
-        action2.clicked.connect(parent.move_vertex)
+        action2.clicked.connect(parent.deactivate)
         
         undo = QPushButton("Undo")
         undo.setFont(QFont("Helvetica", 15))
@@ -656,11 +706,12 @@ class SideBar(QDockWidget):
 
 
 class VertexSelector(QgsMapTool):
-    finished = pyqtSignal()
-    def __init__(self, canvas, layer):
+    
+    def __init__(self, canvas, layer, parent):
         super().__init__(canvas)
         self.canvas = canvas
         self.layer = layer
+        self.parent = parent
         self.selected_vertex = None
         self.highlighted_vertex = None
         self.rubber_bands = []
@@ -676,10 +727,10 @@ class VertexSelector(QgsMapTool):
             self.clearHighlight()
 
     def canvasPressEvent(self, event):
-        if self.highlighted_vertex:
+        
+        if self.highlighted_vertex:   
             self.selected_vertex = self.highlighted_vertex
-            QMessageBox.information(None, "Vertex Selected", f"Vertex at {self.selected_vertex.x()}, {self.selected_vertex.y()} selected")
-            self.finished.emit()
+            self.parent.after_selection()
     
     def findClosestVertex(self, point):
         closest_vertex = None
@@ -707,6 +758,7 @@ class VertexSelector(QgsMapTool):
     def clearHighlight(self):
         for rb in self.rubber_bands:
             self.canvas.scene().removeItem(rb)
+            del rb
         self.rubber_bands = []
         self.highlighted_vertex = None
         
@@ -714,28 +766,34 @@ class VertexSelector(QgsMapTool):
 
 
 class NewVertex(QgsMapTool):
-    finished = pyqtSignal()
-    def __init__(self, canvas, layer):
+    def __init__(self, canvas, layer, parent):
         super().__init__(canvas)
         self.canvas = canvas
+        self.parent = parent
         self.layer = layer
         self.newvertex = None
         self.rbs = []
         self.clearHighlight()
         
     def canvasPressEvent(self, event):
-        self.newvertex = self.toMapCoordinates(event.pos())
-        print("New Vertex : ", self.newvertex)
-        rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
-        rubberBand.setToGeometry(QgsGeometry.fromPointXY(self.newvertex), self.layer)
-        rubberBand.setColor(Qt.blue)
-        rubberBand.setWidth(10)
-        self.rbs.append(rubberBand)
-        self.finished.emit()
+        if event.button() == Qt.RightButton:
+            self.clearHighlight()
+            self.parent.select_vertex()
+            
+        else :
+            self.newvertex = self.toMapCoordinates(event.pos())
+            print("New Vertex : ", self.newvertex)
+            rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+            rubberBand.setToGeometry(QgsGeometry.fromPointXY(self.newvertex), self.layer)
+            rubberBand.setColor(Qt.blue)
+            rubberBand.setWidth(10)
+            self.rbs.append(rubberBand)
+            self.parent.after_new_vertex()
     
     def clearHighlight(self):
         for rb in self.rbs:
             self.canvas.scene().removeItem(rb)
+            del rb
         self.rbs = []
         self.newvertex = None
        
