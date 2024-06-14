@@ -189,7 +189,7 @@ class HeatMapToggle(QDockWidget):
     def __init__(self, parent=None, grandpa=None):
         super(HeatMapToggle, self).__init__(parent)
         self.grandpa = grandpa
-        self.num_heatmaps = 3
+        self.num_heatmaps = 4
         self.ranges = {}
         self.fields = {}
         self.label = QtWidgets.QLabel("Generate heatmap")
@@ -202,17 +202,22 @@ class HeatMapToggle(QDockWidget):
         self.new_heatmap_pbutton.clicked.connect(self.add_custom_heatmap)
         self.checkbox3 = QCheckBox("Excess area heatmap")
         self.checkbox3.stateChanged.connect(self.on_checkbox3_state_changed)
+        self.checkbox4 = QCheckBox("Farm rating nodes heatmap")
+        self.checkbox4.stateChanged.connect(self.on_checkbox4_state_changed)
+        
         
         self.label.setFont(QFont("Helvetica", 20))
         self.checkbox1.setFont(QFont("Helvetica", 15))
         self.checkbox2.setFont(QFont("Helvetica", 15))
         self.checkbox3.setFont(QFont("Helvetica", 15))
+        self.checkbox4.setFont(QFont("Helvetica", 15))
         
         self.new_layout = QFormLayout()
         self.new_layout.addRow(self.label)
         self.new_layout.addRow(self.checkbox1)
         self.new_layout.addRow(self.checkbox2)
         self.new_layout.addRow(self.checkbox3)
+        self.new_layout.addRow(self.checkbox4)
         self.new_layout.addRow(self.new_heatmap_pbutton)
 
         widget = QWidget()
@@ -249,7 +254,19 @@ class HeatMapToggle(QDockWidget):
                 self.checkbox2.setChecked(False)
             self.grandpa.generate_heatmap("excess_area")
         else:
-            self.grandpa.remove_heatmap()   
+            self.grandpa.remove_heatmap()
+            
+    def on_checkbox4_state_changed(self, state):
+        if state == Qt.Checked:
+            if self.checkbox1.isChecked():
+                self.checkbox1.setChecked(False)
+            if self.checkbox2.isChecked():
+                self.checkbox2.setChecked(False)
+            if self.checkbox3.isChecked():
+                self.checkbox3.setChecked(False)
+            self.grandpa.generate_heatmap("farm_rating_nodes")
+        else:
+            self.grandpa.remove_heatmap()
          
     def add_custom_heatmap(self):
         field_label = QLabel("Field name")

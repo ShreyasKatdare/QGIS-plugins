@@ -350,6 +350,13 @@ class LGanalysis:
         elif field == 'excess_area':
             colors = [(0.0, QColor('#d3d3d3')), (0.01, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (10000000, QColor('blue'))]
         
+        elif field == 'farm_rating_nodes':
+            n = 5
+            colorRamp = QgsGradientColorRamp.create({'color1': '#d7191c', 'color2': '#1a9641', 'stops': '0.5;#ffffbf'})
+            color = [colorRamp.color(i/(n-1)).name() for i in range(n)]
+            color = color[::-1]
+            colors = [(0, QColor(color[0])), (5, QColor(color[1])), (10, QColor(color[2])), (15, QColor(color[3])), (20, QColor(color[4])), (1000000, QColor('blue'))]
+        
         elif field == "custom":
             field = custom_field
             n = len(custom_ranges)
