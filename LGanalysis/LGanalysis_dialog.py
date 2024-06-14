@@ -189,27 +189,30 @@ class HeatMapToggle(QDockWidget):
     def __init__(self, parent=None, grandpa=None):
         super(HeatMapToggle, self).__init__(parent)
         self.grandpa = grandpa
-        self.num_heatmaps = 2
+        self.num_heatmaps = 3
         self.ranges = {}
         self.fields = {}
         self.label = QtWidgets.QLabel("Generate heatmap")
         
         self.checkbox1 = QCheckBox("Farm rating heatmap")
-        self.checkbox2 = QCheckBox("Actual area difference heatmap")
+        self.checkbox2 = QCheckBox("Corrected area difference heatmap")
         self.checkbox1.stateChanged.connect(self.on_checkbox1_state_changed)
         self.checkbox2.stateChanged.connect(self.on_checkbox2_state_changed)
         self.new_heatmap_pbutton = QPushButton("Add Custom Heatmap")
         self.new_heatmap_pbutton.clicked.connect(self.add_custom_heatmap)
-        
+        self.checkbox3 = QCheckBox("Excess area heatmap")
+        self.checkbox3.stateChanged.connect(self.on_checkbox3_state_changed)
         
         self.label.setFont(QFont("Helvetica", 20))
         self.checkbox1.setFont(QFont("Helvetica", 15))
         self.checkbox2.setFont(QFont("Helvetica", 15))
+        self.checkbox3.setFont(QFont("Helvetica", 15))
         
         self.new_layout = QFormLayout()
         self.new_layout.addRow(self.label)
         self.new_layout.addRow(self.checkbox1)
         self.new_layout.addRow(self.checkbox2)
+        self.new_layout.addRow(self.checkbox3)
         self.new_layout.addRow(self.new_heatmap_pbutton)
 
         widget = QWidget()
@@ -221,6 +224,9 @@ class HeatMapToggle(QDockWidget):
         if state == Qt.Checked:
             if self.checkbox2.isChecked():
                 self.checkbox2.setChecked(False)
+            if self.checkbox3.isChecked():
+                self.checkbox3.setChecked(False)
+                
             self.grandpa.generate_heatmap("farm_rating")
         else:
             self.grandpa.remove_heatmap()
@@ -229,10 +235,22 @@ class HeatMapToggle(QDockWidget):
         if state == Qt.Checked:
             if self.checkbox1.isChecked():
                 self.checkbox1.setChecked(False)
-            self.grandpa.generate_heatmap("actual_area_diff")
+            if self.checkbox3.isChecked():
+                self.checkbox3.setChecked(False)
+            self.grandpa.generate_heatmap("corrected_area_diff")
         else:
             self.grandpa.remove_heatmap()
-            
+       
+    def on_checkbox3_state_changed(self, state):
+        if state == Qt.Checked:
+            if self.checkbox1.isChecked():
+                self.checkbox1.setChecked(False)
+            if self.checkbox2.isChecked():
+                self.checkbox2.setChecked(False)
+            self.grandpa.generate_heatmap("excess_area")
+        else:
+            self.grandpa.remove_heatmap()   
+         
     def add_custom_heatmap(self):
         field_label = QLabel("Field name")
         line_edit = QLineEdit()
@@ -272,7 +290,7 @@ class HeatMapToggle(QDockWidget):
         checkbox = QCheckBox(f"{self.new_layout.itemAt(self.num_heatmaps + 1, QFormLayout.FieldRole).widget().text()} (Custom heatmap)")
         checkbox.setFont(QFont("Helvetica", 15))
         checkbox.stateChanged.connect(lambda state, num=self.num_heatmaps: self.foo(state, num))
-        self.new_layout.insertRow(3, checkbox)
+        self.new_layout.insertRow(self.num_heatmaps, checkbox)
         
         count = self.new_layout.rowCount()
         

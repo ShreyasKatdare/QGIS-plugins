@@ -344,8 +344,11 @@ class LGanalysis:
         if field == "farm_rating":
             colors = [(0.0, QColor('#d7191c')), (0.8, QColor('#ffffc0')), (0.9, QColor('#1a9641')), (1.0, QColor('blue'))]
         
-        elif field == "actual_area_diff":
+        elif field == "corrected_area_diff":
             colors = [(-100000, QColor('#ca0020')), (-0.05, QColor('#ec846e')), (-0.03, QColor('#f6d6c8')), (-0.01, QColor('#d3d3d3')), (0.01, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (100000, QColor('blue'))]
+        
+        elif field == 'excess_area':
+            colors = [(0.0, QColor('#d3d3d3')), (0.01, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (10000000, QColor('blue'))]
         
         elif field == "custom":
             field = custom_field
