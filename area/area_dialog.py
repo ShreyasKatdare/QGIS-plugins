@@ -22,7 +22,14 @@
  ***************************************************************************/
 """
 
+import numpy as np
+import os
+
+from qgis._gui import QgsMapMouseEvent
 from .psql import *
+from .attribute_utils import *
+
+
 import psycopg2
 import os
 import qgis.utils
@@ -36,27 +43,37 @@ from qgis.PyQt import uic, QtWidgets
 from qgis.core import (
     QgsProject,
     QgsVectorLayer,
+    QgsSymbol,
+    QgsRendererRange,
+    QgsGraduatedSymbolRenderer,
     QgsFeature,
+    QgsLineSymbol,
     QgsGeometry,
     QgsSingleSymbolRenderer,
     QgsFillSymbol,
+    QgsWkbTypes,
+    QgsFeatureRequest,
+    QgsField,
     QgsPalLayerSettings,
     QgsVectorLayerSimpleLabeling,
     QgsTextFormat,
     QgsTextBufferSettings,
     QgsPointXY,
     QgsAnnotation,
-    QgsRectangle,
     QgsCoordinateReferenceSystem,
     QgsTextAnnotation,
-    QgsSpatialIndex,
     QgsRuleBasedRenderer
 )
-from qgis.gui import QgsMapCanvasAnnotationItem
+from qgis.core import QgsVectorFileWriter, QgsDataSourceUri
+from PyQt5.QtCore import pyqtSignal
+from qgis.gui import QgsMapCanvasAnnotationItem, QgsMapToolEmitPoint, QgsRubberBand, QgsMapTool
 from qgis.gui import QgsMapToolEmitPoint
-from PyQt5.QtGui import QColor, QTextDocument
-from PyQt5.QtCore import QSizeF, QPointF
-from PyQt5.QtWidgets import QMenu
+from PyQt5.QtGui import QColor, QTextDocument, QFont
+from PyQt5.QtCore import QSizeF, QPointF, Qt
+from qgis.PyQt.QtCore import QVariant 
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QMessageBox, QAction, QFormLayout, QLabel, QPushButton, QRadioButton
+
+
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -79,15 +96,21 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
         self.tool.canvasClicked.connect(self.calculate_area)
         self.annotations = []
         
+        self.shp_area = 0
+        self.shp_perimeter = 0
+        
     def ok_clicked(self):
         if self.annotations:
             self.close()
         print("ok clicked")
-        village = self.village_in.text()
-        map = self.map_in.text()
+        # self.village = self.village_in.text()
+        # self.map = self.map_in.text()
+        self.map = "jitter_spline_output_regularised_03"
+        village = "dagdagad"
+        map = "jitter_spline_output_regularised_03"
         layer = QgsVectorLayer(
                     f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
-                    f"{village}.{map}_areas",
+                    f"{village}.{map}_copy",
                     "postgres"
                 )
         
@@ -97,8 +120,56 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
             QgsProject.instance().addMapLayer(layer)
             
         self.layer = layer
+        
+        map = "farmplots"
+        layer = QgsVectorLayer(
+                    f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
+                    f"{village}.{map}_copy",
+                    "postgres"
+                )
+        if not layer.isValid():
+            print("Farmplots failed to load!")
+        else:
+            self.farmplots = layer    
+        
+        map = "survey_georeferenced"
+        layer = QgsVectorLayer(
+                    f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
+                    f"{village}.{map}_copy",
+                    "postgres"
+                )
+        if not layer.isValid():
+            print("Farmplots failed to load!")
+        else:
+            self.survey_georeferenced = layer
+        
+        map = "farm_corner_nodes"
+        layer = QgsVectorLayer(
+                    f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='tid' srid=32643 type=Point table=\"{village}\".\"{map}\" (geom)",
+                    f"{village}.{map}_copy",
+                    "postgres"
+                )
+        if not layer.isValid():
+            print("Farmplots failed to load!")
+        else:
+            self.farm_topo_nodes = layer
+        
+        map = f"{self.map}_corner_nodes"
+        layer = QgsVectorLayer(
+                    f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='tid' srid=32643 type=Point table=\"{village}\".\"{map}\" (geom)",
+                    f"{village}.{map}_copy",
+                    "postgres"
+                )
+        if not layer.isValid():
+            print("Farmplots failed to load!")
+        else:
+            self.map_corners = layer
+        
+        self.selected = None
         self.layer.willBeDeleted.connect(self.clear_annotations)
         QgsProject.instance().layerWillBeRemoved.connect(self.layer_removed)
+        self.side_bar = SideBar(self)
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
         self.iface.mapCanvas().setMapTool(self.tool)
     
     def calculate_area(self, point, button):
@@ -114,36 +185,25 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
         if feature is None:
             return
         
-        if button == Qt.RightButton:
-            for annotation in self.annotations:
-                if annotation.annotation().mapPosition() == feature.geometry().centroid().asPoint():
-                    canvas.scene().removeItem(annotation)
-                    self.annotations.remove(annotation)
-                    self.layer.deselect(feature.id())
-                    break            
-
-        else :
-            area = feature.geometry().area()
-            print(f"Area: {area}")
-            self.layer.select(feature.id())
-            geom = feature.geometry()
-            point = geom.centroid().asPoint()
-            area = round(area, 2)
-            html = f"<h1>Area: {area}sqm</h1>"
-            a = QgsTextAnnotation()
-            c = QTextDocument()
-
-            c.setHtml(html)
-            a.setDocument(c)
-
-            a.setFrameSize(QSizeF(150, 50))
-            a.setMapLayer(self.layer)
-            a.setFrameOffsetFromReferencePoint(QtCore.QPointF(30, 30))
-            a.setMapPosition(point)
-            a.setMapPositionCrs(QgsCoordinateReferenceSystem(self.layer.crs()))
-            
-            i = QgsMapCanvasAnnotationItem(a, canvas)
-            self.annotations.append(i)
+        if self.selected is not None:
+            self.layer.deselect(self.selected.id())
+        self.layer.select(feature.id())
+        self.selected = feature
+        
+        self.akarbandh_area_diff = calculate_akarbandh_area_diff(feature)
+        self.varp = calculate_varp(feature)
+        self.shape_index = calculate_shape_index(feature)
+        self.farm_rating = calculate_farm_rating(feature, 'worst_3_avg', self.farmplots)
+        self.farm_intersection = calculate_farm_intersection(feature, self.farmplots)
+        self.excess_area = calculate_excess_area(feature, self.farmplots)
+        self.area_diff = calculate_area_diff(feature, self.survey_georeferenced)
+        self.perimeter_diff = calculate_perimeter_diff(feature, self.survey_georeferenced)
+        self.deviation = calculate_deviation(feature, self.survey_georeferenced)
+        self.corrected_area_diff = calculate_corrected_area_diff(feature, self.survey_georeferenced)
+        self.farm_rating_nodes = calculate_farm_rating_nodes(feature, self.farm_topo_nodes, self.map_corners)
+        
+        
+        self.side_bar.display_attributes()
 
      
     def clear_annotations(self):
@@ -152,6 +212,7 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
         self.annotations = []
 
     def layer_removed(self, layerId):
+        self.iface.mapCanvas().unsetMapTool(self.tool)
         if self.layer and self.layer.id() == layerId:
             self.clear_annotations()
             self.layer = None
@@ -159,3 +220,135 @@ class AreaDialog(QtWidgets.QDialog, FORM_CLASS):
     def close(self):
         self.clear_annotations()
         self.annotations = []
+        
+    def validation(self):
+        self.validate('akarbandh_area_diff')
+        self.validate('varp')
+        self.validate('shape_index')
+        self.validate('farm_rating')
+        self.validate('farm_intersection')
+        self.validate('excess_area')
+        self.validate('area_diff')
+        self.validate('perimeter_diff')
+        self.validate('deviation')
+        self.validate('corrected_area_diff')
+        self.validate('farm_rating_nodes')
+        
+    def validate(self, att):
+        features = self.layer.getFeatures()
+        fun = f"calculate_{att}"
+        f = 1
+        num_none = 0
+        for feature in features:
+            if att == 'farm_rating':
+                calculated_val = globals()[fun](feature, 'worst_3_avg', self.farmplots)
+            elif att == 'farm_intersection' or att == 'excess_area':
+                calculated_val = globals()[fun](feature, self.farmplots)
+            elif att == 'area_diff' or att == 'perimeter_diff' or att == 'deviation' or att == 'corrected_area_diff':
+                calculated_val = globals()[fun](feature, self.survey_georeferenced)
+            elif att == 'farm_rating_nodes':
+                calculated_val = globals()[fun](feature, self.farm_topo_nodes, self.map_corners)
+            
+            else:
+                calculated_val = globals()[fun](feature)
+                
+            if calculated_val is None:
+                num_none += 1
+                continue
+            if abs(feature.attribute(att) - calculated_val) > 0.000001:
+                print(f"Error in {att} for feature gid {feature.attribute('gid')}")
+                f = 0
+             
+        if f:
+            print(f"{att} validated")   
+            
+        print(f"Number of None values: {num_none}")
+        
+#_________________________________________________________________________________________________
+
+class SideBar(QDockWidget):
+    def __init__(self, parent):
+        super(SideBar, self).__init__(parent)
+        self.parent = parent
+        form_layout = QFormLayout()
+
+        self.label_akarbandh_area_diff = QLabel("akarbandh_area_diff = {self.parent.akarbandh_area_diff}")
+        self.label_varp = QLabel("varp = {self.parent.varp}")
+        self.label_shape_index = QLabel("shape_index = {self.parent.shape_index}")
+        self.label_farm_rating = QLabel("farm_rating = {self.parent.farm_rating}")
+        self.label_farm_intersection = QLabel("farm_intersection = {self.parent.farm_intersection}")
+        self.label_excess_area = QLabel("excess_area = {self.parent.excess_area}")
+        self.label_area_diff = QLabel("area_diff = {self.parent.area_diff}")
+        self.label_perimeter_diff = QLabel("perimeter_diff = {self.parent.perimeter_diff}")
+        self.label_deviation = QLabel("deviation = {self.parent.deviation}")
+        self.label_corrected_area_diff = QLabel("corrected_area_diff = {self.parent.corrected_area_diff}")
+        self.label_farm_rating_nodes = QLabel("farm_rating_nodes = {self.parent.farm_rating_nodes}")
+        
+        self.validate_button = QPushButton("Validate")
+        
+        self.validate_button.setFont(QFont("Helvetica", 15))
+        self.label_akarbandh_area_diff.setFont(QFont("Helvetica", 15))
+        self.label_varp.setFont(QFont("Helvetica", 15))
+        self.label_shape_index.setFont(QFont("Helvetica", 15))
+        self.label_farm_rating.setFont(QFont("Helvetica", 15))
+        self.label_farm_intersection.setFont(QFont("Helvetica", 15))
+        self.label_excess_area.setFont(QFont("Helvetica", 15))
+        self.label_area_diff.setFont(QFont("Helvetica", 15))
+        self.label_perimeter_diff.setFont(QFont("Helvetica", 15))
+        self.label_deviation.setFont(QFont("Helvetica", 15))
+        self.label_corrected_area_diff.setFont(QFont("Helvetica", 15))
+        self.label_farm_rating_nodes.setFont(QFont("Helvetica", 15))
+        
+        form_layout.addRow(self.validate_button)
+        form_layout.addRow(self.label_akarbandh_area_diff)
+        form_layout.addRow(self.label_varp)
+        form_layout.addRow(self.label_shape_index)
+        form_layout.addRow(self.label_farm_rating)
+        form_layout.addRow(self.label_farm_intersection)
+        form_layout.addRow(self.label_excess_area)
+        form_layout.addRow(self.label_area_diff)
+        form_layout.addRow(self.label_perimeter_diff)
+        form_layout.addRow(self.label_deviation)
+        form_layout.addRow(self.label_corrected_area_diff)
+        form_layout.addRow(self.label_farm_rating_nodes)
+        
+        self.validate_button.clicked.connect(lambda: self.parent.validation())
+        
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form_layout)
+        self.setWidget(widget)
+
+    def display_attributes(self):
+        self.label_akarbandh_area_diff.setText(f"akarbandh_area_diff = {self.parent.akarbandh_area_diff}")
+        self.label_akarbandh_area_diff.adjustSize()
+        
+        self.label_varp.setText(f"varp = {self.parent.varp}")
+        self.label_varp.adjustSize()
+        
+        self.label_shape_index.setText(f"shape_index = {self.parent.shape_index}")
+        self.label_shape_index.adjustSize()
+    
+        self.label_farm_rating.setText(f"farm_rating = {self.parent.farm_rating}")
+        self.label_farm_rating.adjustSize()
+        
+        self.label_farm_intersection.setText(f"farm_intersection = {self.parent.farm_intersection}")
+        self.label_farm_intersection.adjustSize()
+        
+        self.label_excess_area.setText(f"excess_area = {self.parent.excess_area}")
+        self.label_excess_area.adjustSize()
+        
+        self.label_area_diff.setText(f"area_diff = {self.parent.area_diff}")
+        self.label_area_diff.adjustSize()
+        
+        self.label_perimeter_diff.setText(f"perimeter_diff = {self.parent.perimeter_diff}")
+        self.label_perimeter_diff.adjustSize()
+        
+        self.label_deviation.setText(f"deviation = {self.parent.deviation}")
+        self.label_deviation.adjustSize()
+        
+        self.label_corrected_area_diff.setText(f"corrected_area_diff = {self.parent.corrected_area_diff}")
+        self.label_corrected_area_diff.adjustSize()
+        
+        self.label_farm_rating_nodes.setText(f"farm_rating_nodes = {self.parent.farm_rating_nodes}")
+        self.label_farm_rating_nodes.adjustSize()
+        

@@ -383,7 +383,10 @@ class LGanalysis:
         for i in range(len(colors) - 1):
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
             symbol.setColor(colors[i][1])
-            rng = QgsRendererRange(colors[i][0], colors[i+1][0], symbol, f"{100*colors[i][0]} - {100*colors[i+1][0]}")
+            if field == "farm_rating_nodes":
+                rng = QgsRendererRange(colors[i][0], colors[i+1][0], symbol, f"{colors[i][0]} - {colors[i+1][0]}")
+            else:
+                rng = QgsRendererRange(colors[i][0], colors[i+1][0], symbol, f"{100*colors[i][0]} - {100*colors[i+1][0]}")
             ranges.append(rng)
 
         renderer = QgsGraduatedSymbolRenderer(field, ranges)

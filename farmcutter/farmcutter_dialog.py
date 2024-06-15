@@ -62,11 +62,10 @@ from qgis.core import (
 )
 from PyQt5.QtCore import pyqtSignal
 from qgis.gui import QgsMapCanvasAnnotationItem, QgsMapToolEmitPoint, QgsRubberBand
-from qgis.gui import QgsMapToolEmitPoint
-from PyQt5.QtGui import QColor, QTextDocument
+from PyQt5.QtGui import QColor, QTextDocument, QFont
 from PyQt5.QtCore import QSizeF, QPointF, Qt
-from qgis.PyQt.QtCore import QVariant 
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget
+from qgis.PyQt.QtCore import QVariant
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QPushButton, QLabel, QFormLayout, QRadioButton
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -74,35 +73,36 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 
 class LineDrawTool(QgsMapToolEmitPoint):
-    
-    line_drawn = pyqtSignal()
-    
-    def __init__(self, canvas):
+        
+    def __init__(self, canvas, parent):
         self.canvas = canvas
-        self.rubberBand = None
+        self.parent = parent
+        self.rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
+        self.rubberBand.setColor(Qt.red)
+        self.rubberBand.setWidth(2)
         self.points = []
         self.line = None
         super(LineDrawTool, self).__init__(self.canvas)
 
+    def canvasReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.points.append(self.toMapCoordinates(e.pos()))
+            self.rubberBand.addPoint(self.points[-1])
+        
+        else:
+            self.canvas.unsetMapTool(self)
+            self.line = self.rubberBand.asGeometry()
+            self.parent.select_poly()
+    
     def canvasPressEvent(self, e):
-        self.points = [self.toMapCoordinates(e.pos())]
-        self.rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
-        self.rubberBand.setColor(Qt.red)
-        self.rubberBand.setWidth(2)
-        self.rubberBand.addPoint(self.points[0])
+        if e.button() == Qt.RightButton:
+            self.canvas.unsetMapTool(self)
+            self.line = self.rubberBand.asGeometry()
+            self.parent.select_poly()
 
     def canvasMoveEvent(self, e):
         if self.rubberBand:
             self.rubberBand.movePoint(self.toMapCoordinates(e.pos()))
-
-    def canvasReleaseEvent(self, e):
-        if self.rubberBand:
-            if len(self.points) <= 2:
-                self.points.append(self.toMapCoordinates(e.pos()))
-                self.rubberBand.addPoint(self.points[-1])
-                self.line = self.rubberBand.asGeometry()
-                self.canvas.unsetMapTool(self)
-                self.line_drawn.emit()
 
 
 class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
@@ -120,6 +120,7 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         self.line = None
         self.wid = None
         self.village = None
+        self.side_bar = None
         self.maxgid = 0
         self.map = 'farmplots'
         self.ok_button.accepted.connect(self.load_map)
@@ -148,18 +149,22 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
 
             self.layer = layer
             QgsProject.instance().addMapLayer(layer)
-            self.draw_line()
+            # self.draw_line()
+            self.side_bar = SideBar(self)
+            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
+            
             
             
     def draw_line(self):
-        self.line_tool = LineDrawTool(self.iface.mapCanvas())
-        self.line_tool.line_drawn.connect(self.select_poly)
+        self.line_tool = LineDrawTool(self.iface.mapCanvas(), self)
+        # self.line_tool.line_drawn.connect(self.select_poly)
         self.iface.mapCanvas().setMapTool(self.line_tool)
         
     def buffer_line(self, width):
         line = self.line_tool.line
         self.line = line
-        buffer = line.buffer(width, 1)
+        
+        buffer = line.buffer(width, 5)
         buf = QgsFeature()
         buf.setGeometry(buffer)
         vl = QgsVectorLayer("Polygon?crs=EPSG:32643", "buffer", "memory")
@@ -173,19 +178,9 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         pr.addFeatures([polygon_feature])
         symbol = QgsFillSymbol.createSimple({'color':'255,0,0,100'})  # Red color with some transparency
         vl.renderer().setSymbol(symbol)
-        # Add the buffer layer to the map
         QgsProject.instance().addMapLayer(vl)
+        
         self.iface.mapCanvas().refresh()
-        # self.layer.startEditing()
-        # for feature in self.layer.getFeatures():
-        #     geom = feature.geometry()
-        #     if geom.intersects(buffer):
-        #         print("yes")
-        #         difference = geom.difference(buffer)
-        #         feature.setGeometry(difference)
-        #         self.layer.updateFeature(feature)
-                
-        # self.layer.commitChanges()
         self.iface.mapCanvas().refreshAllLayers()
         return buffer
             
@@ -213,7 +208,7 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         
         for feature_id in self.polytocut:
             feature = layer.getFeature(feature_id)
-            print(f"Attempting to split feature ID {feature_id}, gid {feature.attribute('gid')} with geometry {feature.geometry().asWkt()} using line {line.asWkt()}")
+            # print(f"Attempting to split feature ID {feature_id}, gid {feature.attribute('gid')} with geometry {feature.geometry().asWkt()} using line {line.asWkt()}")
             geom = feature.geometry()
             result, new_geometries, _ = geom.splitGeometry(line.asPolyline(), False)
             
@@ -297,3 +292,26 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
     def remove_line(self):
         if self.line_tool and self.line_tool.rubberBand:
             self.line_tool.rubberBand.reset(QgsWkbTypes.LineGeometry)
+            
+            
+#______________________________________________________________________________________________
+
+
+class SideBar(QDockWidget):
+    def __init__(self, parent):
+        super(SideBar, self).__init__(parent)
+        self.parent = parent
+        form_layout = QFormLayout()
+                
+        action1 = QPushButton("Start Cutting")
+        action1.setFont(QFont("Helvetica", 15))
+        action1.clicked.connect(parent.draw_line)
+        
+        form_layout.addRow(action1)
+        
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form_layout)
+        self.setWidget(widget)
+        
+        
+        # TODO : Add undo, reselect line, cut buttons 

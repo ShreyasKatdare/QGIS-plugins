@@ -411,3 +411,4 @@ def segmentize(psql_conn, topo_name, seg_tol, seg_length = 10000):
     
     with psql_conn.connection().cursor() as curr:
         curr.execute(sql_query)
+        

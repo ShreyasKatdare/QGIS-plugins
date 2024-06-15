@@ -27,7 +27,7 @@ import os
 
 from qgis._gui import QgsMapMouseEvent
 from .psql import *
-
+from .attribute_utils import *
 
 import psycopg2
 import os
@@ -42,6 +42,7 @@ from qgis.PyQt import uic, QtWidgets
 from qgis.core import (
     QgsProject,
     QgsVectorLayer,
+    QgsVectorLayerEditUtils,
     QgsSymbol,
     QgsRendererRange,
     QgsGraduatedSymbolRenderer,
@@ -61,7 +62,8 @@ from qgis.core import (
     QgsAnnotation,
     QgsCoordinateReferenceSystem,
     QgsTextAnnotation,
-    QgsRuleBasedRenderer
+    QgsRuleBasedRenderer,
+    QgsGradientColorRamp
 )
 from qgis.core import QgsVectorFileWriter, QgsDataSourceUri
 from PyQt5.QtCore import pyqtSignal
@@ -77,6 +79,8 @@ from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QMessa
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'mover2_dialog_base.ui'))
 
+# TODO : Update Corner nodes of jitter spline map  STATUS : DONE
+# TODO : Fix bug in updation of varp
 
 class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
     def __init__(self, iface, parent=None):
@@ -100,7 +104,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.rubber_bands = []
         self.points_to_transform = []
         self.layer = None
-        
+        self.survey_georef = "survey_georeferenced"
+        self.survey_georef_layer = None
         
         self.ratingLabel.hide()
         self.ratingCombo.hide()
@@ -293,13 +298,24 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         
         # Create corner nodes
         print("Creating Corner Nodes")
-        self.corner_nodes       = f"corner_nodes_{self.map}"
+        self.corner_nodes = f"corner_nodes_{self.map}"
         get_corner_nodes(self.psql_conn, self.topo_name, self.village, self.corner_nodes)
+        
+        # Adding node_id column as Primary Key to corner nodes map so that
+        # its geometry can be updated dynamically
+        sql = f'''
+                ALTER TABLE {self.village}.{self.corner_nodes}
+                ADD CONSTRAINT pk_{self.corner_nodes} PRIMARY KEY (node_id);
+        
+            '''
+        with self.psql_conn.connection().cursor() as curr:
+            curr.execute(sql)
+        
         
         map = self.corner_nodes
         original_layer = QgsVectorLayer(
-            f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Point table=\"{village}\".\"{map}\" (geom)",
-            f"{village}.{map}_colored",
+            f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='node_id' srid=32643 type=Point table=\"{village}\".\"{map}\" (geom)",
+            f"{village}.{map}_editing",
             "postgres"
         )
 
@@ -307,8 +323,33 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             print("Layer failed to load!")
         else:
             self.corner_nodes_layer = original_layer
-        
+            QgsProject.instance().addMapLayer(self.corner_nodes_layer)
         self.corners()
+        
+        # Load farm corner nodes
+        map = "farm_corner_nodes"        
+        original_layer = QgsVectorLayer(
+            f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='node_id' srid=32643 type=Point table=\"{village}\".\"{map}\" (geom)",
+            f"{village}.{map}_colored",
+            "postgres"
+        )
+
+        if not original_layer.isValid():
+            print("farm corner nodes Layer failed to load!")
+        else:
+            self.farm_corner_nodes = original_layer
+        
+        map = self.survey_georef
+        original_layer = QgsVectorLayer(
+            f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
+            f"{village}.{map}_colored",
+            "postgres"
+        )
+        if not original_layer.isValid():
+            print("Survey Layer failed to load!")
+        else:
+            self.survey_georef_layer = original_layer
+        
         
     def select_vertex(self):
         self.canvas.unsetMapTool(self.mover)
@@ -322,8 +363,6 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
     def after_selection(self):
         print("AFTER SELECTION CALLED !!!!!!!!!!!!!!!!!!")
         self.canvas.unsetMapTool(self.vertexselector)
-        
-        
         
         print("Selected Vertex : ", self.vertexselector.selected_vertex)
         features = self.layer.getFeatures()
@@ -349,6 +388,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
     def after_new_vertex(self):
         print("AFTER NEW VERTEX CALLED !!!!!!!!!!!!!!!!!!")
         self.canvas.unsetMapTool(self.mover)
+        self.update_map_corner_nodes(self.vertexselector.selected_vertex, self.mover.newvertex)
         self.layer.startEditing()
         self.history_new_vertices.append(self.mover.newvertex)
         self.history_old_vertices.append(self.vertexselector.selected_vertex)
@@ -379,8 +419,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             
             new_geom = QgsGeometry.fromPolygonXY([new_vertices])
             feature.setGeometry(new_geom)
-            new_farmrating = self.calculate_farmrating(feature, self.method)
-            feature.setAttribute('farm_rating', new_farmrating)
+            self.update_attributes(feature)
             self.layer.updateFeature(feature)
         
         self.history_transformed_vertices.append(transformed_vertices)        
@@ -388,55 +427,6 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.canvas.refresh()
         self.display_rating(self.layer, self.param_selected)
         self.select_vertex()
-    
-    
-    def calculate_farmrating(self, feature, method):
-        if method == 'all_avg':
-            geom_a = feature.geometry()
-            ratings = []
-            features = self.farmplots_layer.getFeatures()
-            for farmplot_feature in features:
-                geom_b = farmplot_feature.geometry()
-
-                if geom_a.buffer(20, 5).intersects(geom_b):
-                    intersection = geom_a.intersection(geom_b)
-                    difference = geom_b.difference(geom_a)
-
-                    intersection_area = intersection.area()
-                    difference_area = difference.area()
-                    geom_b_area = geom_b.area()
-
-                    rating = max(intersection_area, difference_area) / geom_b_area
-                    ratings.append(rating)
-
-            if ratings:
-                return sum(ratings) / len(ratings)
-            else:
-                return 0.0
-        
-        elif method == 'worst_3_avg':
-            geom_a = feature.geometry()
-            ratings = []
-            features = self.farmplots_layer.getFeatures()
-            for farmplot_feature in features:
-                geom_b = farmplot_feature.geometry()
-
-                if geom_a.buffer(20, 5).intersects(geom_b):
-                    intersection = geom_a.intersection(geom_b)
-                    difference = geom_b.difference(geom_a)
-
-                    intersection_area = intersection.area()
-                    difference_area = difference.area()
-                    geom_b_area = geom_b.area()
-
-                    rating = max(intersection_area, difference_area) / geom_b_area
-                    ratings.append(rating)
-
-            if ratings:
-                ratings.sort()
-                return sum(ratings[:3]) / 3
-            else:
-                return 0.0
     
     
     def clean_up(self, layer_id):
@@ -487,6 +477,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         transformed_vertices = self.history_transformed_vertices.pop()
         print("TRANSFORMED VERTICES : ")
         print(transformed_vertices)
+        self.update_map_corner_nodes(new_vertex, old_vertex)
         
         for vertex in transformed_vertices:
             vertex_xy = QgsPointXY(vertex[0].x(), vertex[0].y())
@@ -496,7 +487,6 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             rubberBand.setWidth(10)
             self.rubber_bands.append(rubberBand)
             
-        
         self.layer.startEditing()
         features = self.layer.getFeatures()
         features_changing = []
@@ -506,7 +496,6 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
                 if QgsPointXY(vertex.x(), vertex.y()) == new_vertex:
                     features_changing.append(feature)
                     break
-        
         
         for feature in features_changing:
             geom = feature.geometry()
@@ -531,14 +520,62 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             
             new_geom = QgsGeometry.fromPolygonXY([new_vertices])
             feature.setGeometry(new_geom)
-            new_farmrating = self.calculate_farmrating(feature, self.method)
-            feature.setAttribute('farm_rating', new_farmrating)
+            self.update_attributes(feature)
             self.layer.updateFeature(feature)
         
         self.layer.commitChanges()
         self.canvas.refresh()
         self.display_rating(self.layer, self.param_selected)
 
+    def update_map_corner_nodes(self, old_vertex, new_vertex):
+        old_vertex_xy = QgsPointXY(old_vertex.x(), old_vertex.y())
+        new_vertex_xy = QgsPointXY(new_vertex.x(), new_vertex.y())
+        self.corner_nodes_layer.startEditing()
+        print("updating corner nodes layer")
+        for feature in self.corner_nodes_layer.getFeatures():
+            point = feature.geometry().asPoint()
+            vertex_xy = QgsPointXY(point.x(), point.y())
+            if vertex_xy.x() == old_vertex_xy.x() and vertex_xy.y() == old_vertex_xy.y():
+                print("Got corresponding corner node")
+                new_geom = QgsGeometry.fromPointXY(new_vertex_xy)
+                feature.setGeometry(new_geom)
+                self.corner_nodes_layer.updateFeature(feature)
+                break
+                
+        self.corner_nodes_layer.commitChanges()
+        self.corner_nodes_layer.triggerRepaint()
+        self.canvas.refresh()
+            
+    
+    
+    
+    def update_attributes(self, feature):
+        new_akarbandh_area_diff = calculate_akarbandh_area_diff(feature)
+        # new_varp = calculate_varp(feature)
+        # if np.isnan(new_varp):
+        #     new_varp = 1
+        new_shape_index = calculate_shape_index(feature)
+        new_farm_rating = calculate_farm_rating(feature, self.method, self.farmplots_layer)
+        new_farm_intersection = calculate_farm_intersection(feature, self.farmplots_layer)
+        new_farm_rating_nodes = calculate_farm_rating_nodes(feature, self.farm_corner_nodes, self.corner_nodes_layer)
+        new_excess_area = calculate_excess_area(feature, self.farmplots_layer)
+        new_area_diff = calculate_area_diff(feature, self.survey_georef_layer)
+        new_perimeter_diff = calculate_perimeter_diff(feature, self.survey_georef_layer)
+        new_deviation = calculate_deviation(feature, self.survey_georef_layer)
+        new_corrected_area_diff = calculate_corrected_area_diff(feature, self.survey_georef_layer)
+    
+        feature.setAttribute('akarbandh_area_diff', new_akarbandh_area_diff)
+        # feature.setAttribute('varp', new_varp)
+        feature.setAttribute('shape_index', new_shape_index)
+        feature.setAttribute('farm_rating', new_farm_rating)
+        feature.setAttribute('farm_intersection', new_farm_intersection)
+        feature.setAttribute('farm_rating_nodes', new_farm_rating_nodes)
+        feature.setAttribute('excess_area', new_excess_area)
+        feature.setAttribute('area_diff', new_area_diff)
+        feature.setAttribute('perimeter_diff', new_perimeter_diff)
+        feature.setAttribute('deviation', new_deviation)
+        feature.setAttribute('corrected_area_diff', new_corrected_area_diff)
+    
     def generate_heatmap(self, attribute):
         print("generating heatmap")
         layer = self.layer
@@ -546,13 +583,27 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         if field == "farm_rating":
             colors = [(0.0, QColor('#d7191c')), (0.8, QColor('#ffffc0')), (0.9, QColor('#1a9641')), (1.0, QColor('blue'))]
         
-        elif field == "actual_area_diff":
+        elif field == "corrected_area_diff":
             colors = [(-100000, QColor('#ca0020')), (-0.05, QColor('#ec846e')), (-0.03, QColor('#f6d6c8')), (-0.01, QColor('#d3d3d3')), (0.01, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (100000, QColor('blue'))]
+        
+        elif field == "excess_area":
+            colors = [(0.0, QColor('#d3d3d3')), (0.01, QColor('#cfe3ed')), (0.03, QColor('#76b4d5')), (0.05, QColor('#0571b0')), (100000, QColor('blue'))]
+        
+        elif field == "farm_rating_nodes":
+            n = 5
+            colorRamp = QgsGradientColorRamp.create({'color1': '#d7191c', 'color2': '#1a9641', 'stops': '0.5;#ffffbf'})
+            color = [colorRamp.color(i/(n-1)).name() for i in range(n)]
+            color = color[::-1]
+            colors = [(0, QColor(color[0])), (5, QColor(color[1])), (10, QColor(color[2])), (15, QColor(color[3])), (20, QColor(color[4])), (1000000, QColor('blue'))]
+        
         ranges = []
         for i in range(len(colors) - 1):
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
             symbol.setColor(colors[i][1])
-            rng = QgsRendererRange(colors[i][0], colors[i+1][0], symbol, f"{100*colors[i][0]} - {100*colors[i+1][0]}")
+            if field == "farm_rating_nodes":
+                rng = QgsRendererRange(colors[i][0], colors[i+1][0], symbol, f"{colors[i][0]} - {colors[i+1][0]}")
+            else:
+                rng = QgsRendererRange(colors[i][0], colors[i+1][0], symbol, f"{100*colors[i][0]} - {100*colors[i+1][0]}")
             ranges.append(rng)
 
         renderer = QgsGraduatedSymbolRenderer(field, ranges)
@@ -755,9 +806,9 @@ class SideBar(QDockWidget):
         label3.setFont(QFont("Helvetica", 20))
         
         parameter1 = QRadioButton("Farm Rating")
-        parameter2 = QRadioButton("Actual Area")
-        parameter3 = QRadioButton("Actual Area Difference")
-        parameter4 = QRadioButton("Excess Area")
+        parameter2 = QRadioButton("Corrected Area Difference")
+        parameter3 = QRadioButton("Excess Area")
+        parameter4 = QRadioButton("Farm Rating Nodes")
         
         
         action1 = QPushButton("Start Editing")
@@ -777,14 +828,25 @@ class SideBar(QDockWidget):
         parameter4.setFont(QFont("Helvetica", 15))
         
         parameter1.clicked.connect(lambda: parent.display_rating(parent.layer, 'farm_rating'))
-        parameter2.clicked.connect(lambda: parent.display_rating(parent.layer, 'actual_area'))
-        parameter3.clicked.connect(lambda: parent.display_rating(parent.layer, 'actual_area_diff'))
-        parameter4.clicked.connect(lambda: parent.display_rating(parent.layer, 'excess_area'))
+        parameter2.clicked.connect(lambda: parent.display_rating(parent.layer, 'corrected_area_diff'))
+        parameter3.clicked.connect(lambda: parent.display_rating(parent.layer, 'excess_area'))
+        parameter4.clicked.connect(lambda: parent.display_rating(parent.layer, 'farm_rating_nodes'))
     
-        rating_heatmap = QCheckBox("Farm rating")
-        rating_heatmap.setFont(QFont("Helvetica", 15))
-        rating_heatmap.stateChanged.connect(self.rating_heatmap)
+        self.farm_rating_heatmap_button = QCheckBox("Farm rating")
+        self.farm_rating_heatmap_button.setFont(QFont("Helvetica", 15))
+        self.farm_rating_heatmap_button.stateChanged.connect(self.farm_rating_heatmap)
         
+        self.corrected_area_diff_heatmap_button = QCheckBox("Corrected Area Difference")
+        self.corrected_area_diff_heatmap_button.setFont(QFont("Helvetica", 15))
+        self.corrected_area_diff_heatmap_button.stateChanged.connect(self.corrected_area_diff_heatmap)
+        
+        self.excess_area_heatmap_button = QCheckBox("Excess Area")
+        self.excess_area_heatmap_button.setFont(QFont("Helvetica", 15))
+        self.excess_area_heatmap_button.stateChanged.connect(self.excess_area_heatmap)
+        
+        self.farm_rating_node_heatmap_button = QCheckBox("Farm Rating Nodes")
+        self.farm_rating_node_heatmap_button.setFont(QFont("Helvetica", 15))
+        self.farm_rating_node_heatmap_button.stateChanged.connect(self.farm_rating_node_heatmap)
         
         form_layout.addRow(label1)
         form_layout.addRow(action1)
@@ -796,18 +858,63 @@ class SideBar(QDockWidget):
         form_layout.addRow(parameter3)
         form_layout.addRow(parameter4)
         form_layout.addRow(label3)
-        form_layout.addRow(rating_heatmap)
+        form_layout.addRow(self.farm_rating_heatmap_button)
+        form_layout.addRow(self.corrected_area_diff_heatmap_button)
+        form_layout.addRow(self.excess_area_heatmap_button)
+        form_layout.addRow(self.farm_rating_node_heatmap_button)
         
         widget = QtWidgets.QWidget()
         widget.setLayout(form_layout)
         self.setWidget(widget)
 
-    def rating_heatmap(self, state):
+    def farm_rating_heatmap(self, state):
         if state == Qt.Checked:
+            if self.corrected_area_diff_heatmap_button.isChecked():
+                self.corrected_area_diff_heatmap_button.setChecked(False)
+            if self.excess_area_heatmap_button.isChecked():
+                self.excess_area_heatmap_button.setChecked(False)
+            if self.farm_rating_node_heatmap_button.isChecked():
+                self.farm_rating_node_heatmap_button.setChecked(False)
+                
             self.parent.generate_heatmap("farm_rating")
         else:
             self.parent.remove_heatmap()
+            
+    def corrected_area_diff_heatmap(self, state):
+        if state == Qt.Checked:
+            if self.farm_rating_heatmap_button.isChecked():
+                self.farm_rating_heatmap_button.setChecked(False)
+            if self.excess_area_heatmap_button.isChecked():
+                self.excess_area_heatmap_button.setChecked(False)
+            if self.farm_rating_node_heatmap_button.isChecked():
+                self.farm_rating_node_heatmap_button.setChecked(False)
+            self.parent.generate_heatmap("corrected_area_diff")
+        else:
+            self.parent.remove_heatmap()
 
+    def excess_area_heatmap(self, state):
+        if state == Qt.Checked:
+            if self.farm_rating_heatmap_button.isChecked():
+                self.farm_rating_heatmap_button.setChecked(False)
+            if self.corrected_area_diff_heatmap_button.isChecked():
+                self.corrected_area_diff_heatmap_button.setChecked(False)
+            if self.farm_rating_node_heatmap_button.isChecked():
+                self.farm_rating_node_heatmap_button.setChecked(False)
+            self.parent.generate_heatmap("excess_area")
+        else:
+            self.parent.remove_heatmap()
+            
+    def farm_rating_node_heatmap(self, state):
+        if state == Qt.Checked:
+            if self.farm_rating_heatmap_button.isChecked():
+                self.farm_rating_heatmap_button.setChecked(False)
+            if self.corrected_area_diff_heatmap_button.isChecked():
+                self.corrected_area_diff_heatmap_button.setChecked(False)
+            if self.excess_area_heatmap_button.isChecked():
+                self.excess_area_heatmap_button.setChecked(False)
+            self.parent.generate_heatmap("farm_rating_nodes")
+        else:
+            self.parent.remove_heatmap()
 #_______________________________________________________________________________________________________________________
 
 
