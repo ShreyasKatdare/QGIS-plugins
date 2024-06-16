@@ -65,7 +65,7 @@ from qgis.gui import QgsMapCanvasAnnotationItem, QgsMapToolEmitPoint, QgsRubberB
 from PyQt5.QtGui import QColor, QTextDocument, QFont
 from PyQt5.QtCore import QSizeF, QPointF, Qt
 from qgis.PyQt.QtCore import QVariant
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QPushButton, QLabel, QFormLayout, QRadioButton
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QPushButton, QLabel, QFormLayout, QRadioButton, QSpinBox
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -92,13 +92,13 @@ class LineDrawTool(QgsMapToolEmitPoint):
         else:
             self.canvas.unsetMapTool(self)
             self.line = self.rubberBand.asGeometry()
-            self.parent.select_poly()
+            self.parent.buffer_line(self.parent.wid)
     
     def canvasPressEvent(self, e):
         if e.button() == Qt.RightButton:
             self.canvas.unsetMapTool(self)
             self.line = self.rubberBand.asGeometry()
-            self.parent.select_poly()
+            self.parent.buffer_line(self.parent.wid)
 
     def canvasMoveEvent(self, e):
         if self.rubberBand:
@@ -122,6 +122,8 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         self.village = None
         self.side_bar = None
         self.maxgid = 0
+        self.rubber_bands = []
+        
         self.map = 'farmplots'
         self.ok_button.accepted.connect(self.load_map)
         QgsProject.instance().layerWillBeRemoved.connect(self.remove_line)        
@@ -161,24 +163,33 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         self.iface.mapCanvas().setMapTool(self.line_tool)
         
     def buffer_line(self, width):
+        for rb in self.rubber_bands:
+            self.iface.mapCanvas().scene().removeItem(rb)
+        self.rubber_bands = []
         line = self.line_tool.line
         self.line = line
         
         buffer = line.buffer(width, 5)
         buf = QgsFeature()
         buf.setGeometry(buffer)
-        vl = QgsVectorLayer("Polygon?crs=EPSG:32643", "buffer", "memory")
-        pr = vl.dataProvider()
+        
+        rubber_band = QgsRubberBand(self.iface.mapCanvas(), QgsWkbTypes.PolygonGeometry)
+        rubber_band.setToGeometry(buffer, None)
+        rubber_band.setStrokeColor(QColor(255, 0, 0))  # Red color
+        rubber_band.setWidth(2)
+        self.rubber_bands.append(rubber_band)
+        # vl = QgsVectorLayer("Polygon?crs=EPSG:32643", "buffer", "memory")
+        # pr = vl.dataProvider()
 
-        pr.addAttributes([QgsField("ID", QVariant.Int)])
+        # pr.addAttributes([QgsField("ID", QVariant.Int)])
 
-        polygon_feature = QgsFeature()
-        polygon_feature.setGeometry(buffer)
-        polygon_feature.setAttributes([1])
-        pr.addFeatures([polygon_feature])
-        symbol = QgsFillSymbol.createSimple({'color':'255,0,0,100'})  # Red color with some transparency
-        vl.renderer().setSymbol(symbol)
-        QgsProject.instance().addMapLayer(vl)
+        # polygon_feature = QgsFeature()
+        # polygon_feature.setGeometry(buffer)
+        # polygon_feature.setAttributes([1])
+        # pr.addFeatures([polygon_feature])
+        # symbol = QgsFillSymbol.createSimple({'color':'255,0,0,100'})  # Red color with some transparency
+        # vl.renderer().setSymbol(symbol)
+        # QgsProject.instance().addMapLayer(vl)
         
         self.iface.mapCanvas().refresh()
         self.iface.mapCanvas().refreshAllLayers()
@@ -288,9 +299,17 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         
         return varp
     
+    def buffer_width_changed(self):
+        self.wid = self.side_bar.spin_box.value()
+        self.buffer_line(self.wid)
     
     def remove_line(self):
+        for rb in self.rubber_bands:
+            self.iface.mapCanvas().scene().removeItem(rb)
+        self.rubber_bands = []
+        
         if self.line_tool and self.line_tool.rubberBand:
+            self.iface.mapCanvas().scene().removeItem(self.line_tool.rubberBand)
             self.line_tool.rubberBand.reset(QgsWkbTypes.LineGeometry)
             
             
@@ -307,11 +326,27 @@ class SideBar(QDockWidget):
         action1.setFont(QFont("Helvetica", 15))
         action1.clicked.connect(parent.draw_line)
         
+        label = QLabel("Set Width of buffer")
+        label.setFont(QFont("Helvetica", 15))
+        
+        self.cutbutton = QPushButton("Cut")
+        self.cutbutton.setFont(QFont("Helvetica", 15))
+        self.cutbutton.clicked.connect(parent.select_poly)
+        
+        self.spin_box = QSpinBox()
+        self.spin_box.setRange(0, 100)
+        self.spin_box.setSingleStep(5)
+        self.spin_box.valueChanged.connect(self.buffer_changed)
+        
         form_layout.addRow(action1)
+        form_layout.addRow(label)
+        form_layout.addRow(self.spin_box)
+        form_layout.addRow(self.cutbutton)
         
         widget = QtWidgets.QWidget()
         widget.setLayout(form_layout)
         self.setWidget(widget)
         
-        
+    def buffer_changed(self):
+        self.parent.buffer_width_changed()
         # TODO : Add undo, reselect line, cut buttons 
