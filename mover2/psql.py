@@ -75,6 +75,7 @@ def drop_table(psql_conn, schema, table):
     with psql_conn.connection().cursor() as curr:
         curr.execute(sql)
         
+        
 def add_column(psql_conn, table, column, type):
     sql = f'''
         alter table {table}
@@ -411,4 +412,34 @@ def segmentize(psql_conn, topo_name, seg_tol, seg_length = 10000):
     
     with psql_conn.connection().cursor() as curr:
         curr.execute(sql_query)
+
+
+def create_logs_table(psql_conn, schema, table):
+    sql = f'''
+        create table {schema}.{table} (
+            id serial primary key,
+            time timestamp default current_timestamp,
+            vertex_id integer,
+            old_geom varchar(255),
+            new_geom varchar(255)
+        );  
+    '''
+    with psql_conn.connection().cursor() as curr:
+        curr.execute(sql)
+    psql_conn.connection().commit()
         
+def insert_log(psql_conn, schema, table, node_id, old_x, old_y, new_x, new_y):
+    old_x = round(old_x, 2)
+    old_y = round(old_y, 2)
+    new_x = round(new_x, 2)
+    new_y = round(new_y, 2)
+    
+    old_geom = f"({old_x}, {old_y})"
+    new_geom = f"({new_x}, {new_y})"
+    sql = f'''
+        INSERT INTO {schema}.{table} (vertex_id, old_geom, new_geom)
+        VALUES (%s, %s, %s);
+    '''
+    with psql_conn.connection().cursor() as curr:
+        curr.execute(sql, (node_id, old_geom, new_geom))
+    psql_conn.connection().commit()

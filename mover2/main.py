@@ -70,8 +70,10 @@ class Main:
         self.rubber_bands = []
         self.points_to_transform = []
         self.layer = None
-        self.survey_georef = "survey_georeferenced"
-        self.survey_georef_layer = None
+        self.node_id = None
+        
+        self.logs_first_time = False
+        self.logs = []
         
     
     def initiate(self):
@@ -144,6 +146,15 @@ class Main:
         print("Loading Map")
         village = self.village
         map =  self.map
+        if '_editing' in map:
+            if check_table_exists(self.psql_conn, village, map) == False:
+                self.map = map.replace('_editing', '')
+                map = self.map
+                self.logs_first_time = True
+            
+        else :
+            self.logs_first_time = True
+        
         original_layer = QgsVectorLayer(
             f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
             f"{village}.{map}_colored",
@@ -181,6 +192,11 @@ class Main:
         self.corner_nodes = f"corner_nodes_{self.map}"
         get_corner_nodes(self.psql_conn, self.topo_name, self.village, self.corner_nodes)
         
+        # Create all nodes
+        print("Creating All Nodes")
+        self.all_nodes = f"all_nodes_{self.map}"
+        copy_table(self.psql_conn, f"{self.topo_name}.node", f"{self.village}.{self.all_nodes}")
+        
         # Adding node_id column as Primary Key to corner nodes map so that
         # its geometry can be updated dynamically
         sql = f'''
@@ -191,6 +207,13 @@ class Main:
         with self.psql_conn.connection().cursor() as curr:
             curr.execute(sql)
         
+        sql = f'''
+                ALTER TABLE {self.village}.{self.all_nodes}
+                ADD CONSTRAINT pk_{self.all_nodes} PRIMARY KEY (node_id);
+        
+            '''
+        with self.psql_conn.connection().cursor() as curr:
+            curr.execute(sql)
         
         map = self.corner_nodes
         original_layer = QgsVectorLayer(
@@ -203,7 +226,20 @@ class Main:
             print("Layer failed to load!")
         else:
             self.corner_nodes_layer = original_layer
-            QgsProject.instance().addMapLayer(self.corner_nodes_layer)
+            # QgsProject.instance().addMapLayer(self.corner_nodes_layer)
+        
+        map = self.all_nodes
+        original_layer = QgsVectorLayer(
+            f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='node_id' srid=32643 type=Point table=\"{village}\".\"{map}\" (geom)",
+            f"{village}.{map}_editing",
+            "postgres"
+        )
+        if not original_layer.isValid():
+            print("Layer failed to load!")
+        else:
+            self.all_nodes_layer = original_layer
+            # QgsProject.instance().addMapLayer(self.all_nodes_layer)
+        
         self.corners()
         
         # Load farm corner nodes
@@ -268,7 +304,16 @@ class Main:
     def after_new_vertex(self):
         print("AFTER NEW VERTEX CALLED !!!!!!!!!!!!!!!!!!")
         self.canvas.unsetMapTool(self.mover)
-        self.update_map_corner_nodes(self.vertexselector.selected_vertex, self.mover.newvertex)
+        self.update_map_nodes_layer(self.vertexselector.selected_vertex, self.mover.newvertex, self.corner_nodes_layer)
+        self.update_map_nodes_layer(self.vertexselector.selected_vertex, self.mover.newvertex, self.all_nodes_layer)
+        
+        old_x = self.vertexselector.selected_vertex.x()
+        old_y = self.vertexselector.selected_vertex.y()
+        new_x = self.mover.newvertex.x()
+        new_y = self.mover.newvertex.y()
+        
+        self.logs.append((self.node_id, old_x, old_y, new_x, new_y))
+        
         self.layer.startEditing()
         self.history_new_vertices.append(self.mover.newvertex)
         self.history_old_vertices.append(self.vertexselector.selected_vertex)
@@ -292,6 +337,7 @@ class Main:
                     transformed_vertex = self.transform(self.vertexselector.selected_vertex, self.mover.newvertex, (QgsPointXY(vertex.x(), vertex.y()), ratio))
                     new_vertices.append(transformed_vertex)
                     transformed_vertices.append((transformed_vertex, ratio))
+                    self.update_map_nodes_layer(vertex, transformed_vertex, self.all_nodes_layer)
 
                 else:
                     new_vertices.append(QgsPointXY(vertex.x(), vertex.y()))
@@ -365,7 +411,10 @@ class Main:
         transformed_vertices = self.history_transformed_vertices.pop()
         print("TRANSFORMED VERTICES : ")
         print(transformed_vertices)
-        self.update_map_corner_nodes(new_vertex, old_vertex)
+        self.update_map_nodes_layer(new_vertex, old_vertex, self.corner_nodes_layer)
+        self.update_map_nodes_layer(new_vertex, old_vertex, self.all_nodes_layer)
+        self.logs.append((self.node_id, new_vertex.x(), new_vertex.y(), old_vertex.x(), old_vertex.y()))
+        
         
         for vertex in transformed_vertices:
             vertex_xy = QgsPointXY(vertex[0].x(), vertex[0].y())
@@ -401,8 +450,10 @@ class Main:
                         if point_xy.x() == point_needed.x() and point_xy.y() == point_needed.y():
                             ratio = point[1]
                             break
-                    new_vertices.append(self.transform(new_vertex, old_vertex, (QgsPointXY(vertex.x(), vertex.y()), ratio)))
-                
+                    transformed_vertex = self.transform(new_vertex, old_vertex, (QgsPointXY(vertex.x(), vertex.y()), ratio))
+                    new_vertices.append(transformed_vertex)
+                    self.update_map_nodes_layer(vertex, transformed_vertex, self.all_nodes_layer)
+
                 else:
                     new_vertices.append(QgsPointXY(vertex.x(), vertex.y()))
             
@@ -415,23 +466,24 @@ class Main:
         self.canvas.refresh()
         self.display_rating(self.layer, self.param_selected)
 
-    def update_map_corner_nodes(self, old_vertex, new_vertex):
+    def update_map_nodes_layer(self, old_vertex, new_vertex, nodes_map_layer):
         old_vertex_xy = QgsPointXY(old_vertex.x(), old_vertex.y())
         new_vertex_xy = QgsPointXY(new_vertex.x(), new_vertex.y())
-        self.corner_nodes_layer.startEditing()
+        nodes_map_layer.startEditing()
         print("updating corner nodes layer")
-        for feature in self.corner_nodes_layer.getFeatures():
+        for feature in nodes_map_layer.getFeatures():
             point = feature.geometry().asPoint()
             vertex_xy = QgsPointXY(point.x(), point.y())
             if vertex_xy.x() == old_vertex_xy.x() and vertex_xy.y() == old_vertex_xy.y():
                 print("Got corresponding corner node")
                 new_geom = QgsGeometry.fromPointXY(new_vertex_xy)
+                self.node_id = feature['node_id']
                 feature.setGeometry(new_geom)
-                self.corner_nodes_layer.updateFeature(feature)
+                nodes_map_layer.updateFeature(feature)
                 break
                 
-        self.corner_nodes_layer.commitChanges()
-        self.corner_nodes_layer.triggerRepaint()
+        nodes_map_layer.commitChanges()
+        nodes_map_layer.triggerRepaint()
         self.canvas.refresh()
             
     
@@ -688,16 +740,38 @@ class Main:
         uri.setDataSource(schema, table_name, "geom")
         err = QgsVectorLayerExporter.exportLayer(self.layer, uri.uri(), "postgres", QgsCoordinateReferenceSystem(), False)
 
+        print("Is logs first time ", self.logs_first_time)
+
+        logs_name = f"{self.map}_logs"
+        if self.logs_first_time:
+            drop_table(self.psql_conn, schema, logs_name)
+            create_logs_table(self.psql_conn, schema, logs_name)
+            
         if err[0] != QgsVectorLayerExporter.NoError:
             print("Error when saving layer to Postgres: ", err)
         else:
             print("Layer saved successfully")  
+            print("Updating logs")
+            
+            # TODO : Add Code to add rows to logs table
+            # Rows stored as list in self.logs
+            for log in self.logs:
+                node_id = log[0]
+                old_x = log[1]
+                old_y = log[2]
+                new_x = log[3]
+                new_y = log[4]
+                insert_log(self.psql_conn, schema, logs_name, node_id, old_x, old_y, new_x, new_y)
+                
+            self.logs_first_time = False
+            self.logs = []
+                            
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Information)
             msg.setText(f"Layer saved successfully\nYou will be able to see the layer named {table_name} in schema {schema}")
             msg.setWindowTitle("Success")
-            # msg.setStandardButtons(QMessageBox.Ok)
             msg.exec_()
+            
         
         
     def run(self):

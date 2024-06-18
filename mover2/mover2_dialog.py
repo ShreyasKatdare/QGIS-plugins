@@ -118,7 +118,7 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.lineEdit_user.hide()
         self.lineEdit_password.hide()
         self.lineEdit_database.hide()
-        self.mapCombo.addItems(['jitter_spline_output_regularised_03', 'survey_georeferenced', 'shifted_faces', 'jitter_spline_output_regularised_05', 'farm_graph_faces'])
+        self.mapCombo.addItems(['jitter_spline_output_regularised_03', 'survey_georeferenced', 'shifted_faces', 'jitter_spline_output_regularised_05', 'farm_graph_faces', 'jitter_spline_output_regularised_03_editing', 'survey_georeferenced_editing', 'shifted_faces_editing', 'jitter_spline_output_regularised_05_editing', 'farm_graph_faces_editing'])
         self.ratingCombo.addItems(['worst_3_avg', 'all_avg'])
         self.ratingCombo.setCurrentText('worst_3_avg')
         self.showButton.clicked.connect(self.show_hide)
