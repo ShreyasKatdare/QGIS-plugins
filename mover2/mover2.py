@@ -27,9 +27,11 @@ from qgis.PyQt.QtWidgets import QAction
 
 # Initialize Qt resources from file resources.py
 from .resources import *
+from .main import *
 # Import the code for the dialog
 from .mover2_dialog import mover2Dialog
 import os.path
+
 
 
 class mover2:
@@ -197,4 +199,6 @@ class mover2:
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
-            pass
+            editing_session = Main(self)
+            # self.side_bar = SideBar(self, editing_session)
+            editing_session.run()
