@@ -132,7 +132,12 @@ class Main:
                         "postgres"
                     )
         if not layer.isValid():
-            print("Farmplots failed to load!")
+            print(f"Layer {map} failed to load!")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Layer {map} failed to load!")
+            msg.setWindowTitle("Failed")
+            msg.exec_()
         else :
             self.farmplots_layer = layer
             symbol = QgsFillSymbol.createSimple({'color': 'green'})
@@ -162,7 +167,12 @@ class Main:
         )
 
         if not original_layer.isValid():
-            print("Layer failed to load!")
+            print(f"Layer {map} failed to load!")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Layer {map} failed to load!")
+            msg.setWindowTitle("Failed")
+            msg.exec_()
         else:
             layer = QgsVectorLayer("Polygon?crs=epsg:32643", "temporary_layer", "memory")
             data_provider = layer.dataProvider()
@@ -223,7 +233,12 @@ class Main:
         )
 
         if not original_layer.isValid():
-            print("Layer failed to load!")
+            print(f"Layer {map} failed to load!")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Layer {map} failed to load!")
+            msg.setWindowTitle("Failed")
+            msg.exec_()
         else:
             self.corner_nodes_layer = original_layer
             # QgsProject.instance().addMapLayer(self.corner_nodes_layer)
@@ -235,7 +250,12 @@ class Main:
             "postgres"
         )
         if not original_layer.isValid():
-            print("Layer failed to load!")
+            print(f"Layer {map} failed to load!")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Layer {map} failed to load!")
+            msg.setWindowTitle("Failed")
+            msg.exec_()
         else:
             self.all_nodes_layer = original_layer
             # QgsProject.instance().addMapLayer(self.all_nodes_layer)
@@ -251,7 +271,12 @@ class Main:
         )
 
         if not original_layer.isValid():
-            print("farm corner nodes Layer failed to load!")
+            print(f"Layer {map} failed to load!")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Layer {map} failed to load!")
+            msg.setWindowTitle("Failed")
+            msg.exec_()
         else:
             self.farm_corner_nodes = original_layer
         
@@ -262,7 +287,12 @@ class Main:
             "postgres"
         )
         if not original_layer.isValid():
-            print("Survey Layer failed to load!")
+            print(f"Layer {map} failed to load!")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Layer {map} failed to load!")
+            msg.setWindowTitle("Failed")
+            msg.exec_()
         else:
             self.survey_georef_layer = original_layer
         
