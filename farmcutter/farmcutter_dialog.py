@@ -58,14 +58,17 @@ from qgis.core import (
     QgsAnnotation,
     QgsCoordinateReferenceSystem,
     QgsTextAnnotation,
-    QgsRuleBasedRenderer
+    QgsRuleBasedRenderer,
+    QgsVectorFileWriter, 
+    QgsVectorLayerExporter
 )
 from PyQt5.QtCore import pyqtSignal
+from qgis.core import QgsVectorFileWriter, QgsDataSourceUri
 from qgis.gui import QgsMapCanvasAnnotationItem, QgsMapToolEmitPoint, QgsRubberBand
 from PyQt5.QtGui import QColor, QTextDocument, QFont
 from PyQt5.QtCore import QSizeF, QPointF, Qt
 from qgis.PyQt.QtCore import QVariant
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QPushButton, QLabel, QFormLayout, QRadioButton, QSpinBox
+from PyQt5.QtWidgets import QFileDialog,QDialog, QMessageBox, QVBoxLayout, QCheckBox, QDockWidget, QPushButton, QLabel, QFormLayout, QRadioButton, QSpinBox
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -116,6 +119,16 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
         self.iface = iface
+        self.lineEdit_farmplots.setText('farmplots')
+        self.lineEdit_host.setText('localhost')
+        self.lineEdit_port.setText('5432')
+        self.lineEdit_user.setText('postgres')
+        self.lineEdit_password.setText('postgres')
+        self.lineEdit_database.setText('dolr')
+        self.ok_button.accepted.connect(self.load_map)
+        QgsProject.instance().layerWillBeRemoved.connect(self.remove_line)        
+
+    def load_map(self):
         self.polytocut = []
         self.line = None
         self.wid = None
@@ -123,18 +136,20 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         self.side_bar = None
         self.maxgid = 0
         self.rubber_bands = []
+        self.line_tool = None
         
-        self.map = 'farmplots'
-        self.ok_button.accepted.connect(self.load_map)
-        QgsProject.instance().layerWillBeRemoved.connect(self.remove_line)        
-
-    def load_map(self):
         village = self.village_in.text()
-        self.wid = int(self.width_in.text())
         self.village = village
+        self.map = self.lineEdit_farmplots.text()
+        self.host = self.lineEdit_host.text()
+        self.port = self.lineEdit_port.text()
+        self.user = self.lineEdit_user.text()
+        self.password = self.lineEdit_password.text()
+        self.database = self.lineEdit_database.text()
+        
         map = self.map
         original_layer = QgsVectorLayer(
-            f"dbname='{psql['database']}' host={psql['host']} port={psql['port']} user='{psql['user']}' password='{psql['password']}' sslmode=disable key='unique_id' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
+            f"dbname='{self.database}' host={self.host} port={self.port} user='{self.user}' password='{self.password}' sslmode=disable key='tid' srid=32643 type=Polygon table=\"{village}\".\"{map}\" (geom)",
             f"{village}.{map}_colored",
             "postgres"
         )
@@ -151,10 +166,10 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
 
             self.layer = layer
             QgsProject.instance().addMapLayer(layer)
-            # self.draw_line()
             self.side_bar = SideBar(self)
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
-            
+            self.wid = self.side_bar.spin_box.value()
+            self.psql_conn = PGConn()
             
             
     def draw_line(self):
@@ -178,18 +193,6 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         rubber_band.setStrokeColor(QColor(255, 0, 0))  # Red color
         rubber_band.setWidth(2)
         self.rubber_bands.append(rubber_band)
-        # vl = QgsVectorLayer("Polygon?crs=EPSG:32643", "buffer", "memory")
-        # pr = vl.dataProvider()
-
-        # pr.addAttributes([QgsField("ID", QVariant.Int)])
-
-        # polygon_feature = QgsFeature()
-        # polygon_feature.setGeometry(buffer)
-        # polygon_feature.setAttributes([1])
-        # pr.addFeatures([polygon_feature])
-        # symbol = QgsFillSymbol.createSimple({'color':'255,0,0,100'})  # Red color with some transparency
-        # vl.renderer().setSymbol(symbol)
-        # QgsProject.instance().addMapLayer(vl)
         
         self.iface.mapCanvas().refresh()
         self.iface.mapCanvas().refreshAllLayers()
@@ -211,7 +214,6 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
     
     
     def cut_poly(self):
-        # layer = self.iface.mapCanvas().currentLayer()
         layer = self.layer
         line = self.line
         layer.startEditing()
@@ -274,6 +276,7 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
             
         layer.commitChanges()
         self.iface.mapCanvas().refreshAllLayers()
+        self.remove_line()
     
     def calculate_varp(self, geom):
         
@@ -321,12 +324,16 @@ class SideBar(QDockWidget):
         super(SideBar, self).__init__(parent)
         self.parent = parent
         form_layout = QFormLayout()
-                
+        
+        label1 = QLabel("(Use left click to draw line, right click to finish drawing)")
+        label1.setFont(QFont("Helvetica", 15))
+        
+        empty = QLabel("")
         action1 = QPushButton("Start Cutting")
         action1.setFont(QFont("Helvetica", 15))
         action1.clicked.connect(parent.draw_line)
         
-        label = QLabel("Set Width of buffer")
+        label = QLabel("Set Width of buffer :")
         label.setFont(QFont("Helvetica", 15))
         
         self.cutbutton = QPushButton("Cut")
@@ -338,10 +345,23 @@ class SideBar(QDockWidget):
         self.spin_box.setSingleStep(5)
         self.spin_box.valueChanged.connect(self.buffer_changed)
         
+        self.save_button = QPushButton("Save to postgres")
+        self.save_button.setFont(QFont("Helvetica", 15))
+        self.save_button.clicked.connect(self.save_layer_postgres)
+                
+        self.save_locally = QPushButton("Save Layer Locally")
+        self.save_locally.setFont(QFont("Helvetica", 15))
+        self.save_locally.clicked.connect(self.save_layer_locally)
+        
         form_layout.addRow(action1)
+        form_layout.addRow(label1)
+        form_layout.addRow(empty)
         form_layout.addRow(label)
         form_layout.addRow(self.spin_box)
         form_layout.addRow(self.cutbutton)
+        form_layout.addRow(self.save_button)
+        form_layout.addRow(self.save_locally)
+        
         
         widget = QtWidgets.QWidget()
         widget.setLayout(form_layout)
@@ -350,3 +370,50 @@ class SideBar(QDockWidget):
     def buffer_changed(self):
         self.parent.buffer_width_changed()
         # TODO : Add undo, reselect line, cut buttons 
+        
+    def save_layer_postgres(self):
+        print("saving...")
+        schema = self.parent.village
+        if 'editing' in self.parent.map:
+            table_name = self.parent.map
+        else:
+            table_name = f"{self.parent.map}_editing"
+        print("Dropping table : ", table_name)
+        drop_table(self.parent.psql_conn, schema, table_name)
+        
+        uri = QgsDataSourceUri()
+        uri.setConnection(psql['host'], psql['port'], psql['database'], psql['user'], psql['password'])
+        uri.setDataSource(schema, table_name, "geom", "", "gid")
+        err = QgsVectorLayerExporter.exportLayer(self.parent.layer, uri.uri(), "postgres", QgsCoordinateReferenceSystem(), False)
+
+        if err[0] != QgsVectorLayerExporter.NoError:
+            print("Error when saving layer to Postgres: ", err)
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Failed to save layer to Postgres\nError: {err}")
+            msg.setWindowTitle("Failed")
+            msg.exec_()
+        else:
+            print("Layer saved successfully")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText(f"Layer saved successfully\nYou will be able to see the layer named {table_name} in schema {schema}")
+            msg.setWindowTitle("Success")
+            msg.exec_()
+            
+    
+    def save_layer_locally(self):
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Layer", "", "Shapefile (*.shp);;GeoJSON (*.geojson)")
+        print("file_name : ", file_name)
+        if file_name:
+            options = QgsVectorFileWriter.SaveVectorOptions()
+            options.driverName = "ESRI Shapefile"
+            options.fileEncoding = "UTF-8"
+            transformContext = QgsProject.instance().transformContext()
+            writer = QgsVectorFileWriter.writeAsVectorFormatV2(self.parent.layer, file_name, transformContext, options)
+            if writer == QgsVectorFileWriter.NoError:
+                print("Layer saved successfully")
+            else:
+                print("Error saving layer")
+                
+            

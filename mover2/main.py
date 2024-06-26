@@ -301,13 +301,14 @@ class Main:
         self.canvas.unsetMapTool(self.mover)
         if self.vertexselector is not None:
             self.vertexselector.clearHighlight()
-        if self.mover is not None:
-            self.mover.clearHighlight()
+        
         self.RemoveHighlight()
         self.canvas.setMapTool(self.vertexselector)
         
     def after_selection(self):
         print("AFTER SELECTION CALLED !!!!!!!!!!!!!!!!!!")
+        if self.mover is not None:
+            self.mover.clearHighlight()
         self.canvas.unsetMapTool(self.vertexselector)
         
         print("Selected Vertex : ", self.vertexselector.selected_vertex)
@@ -520,32 +521,56 @@ class Main:
     
     
     def update_attributes(self, feature):
-        new_akarbandh_area_diff = calculate_akarbandh_area_diff(feature)
-        new_varp = calculate_varp(feature)
-        if np.isnan(new_varp) or new_varp is None or new_varp == "":
-            new_varp = 1
-        new_shape_index = calculate_shape_index(feature)
-        new_farm_rating = calculate_farm_rating(feature, self.method, self.farmplots_layer)
-        new_farm_intersection = calculate_farm_intersection(feature, self.farmplots_layer)
-        new_farm_rating_nodes = calculate_farm_rating_nodes(feature, self.farm_corner_nodes, self.corner_nodes_layer)
-        new_excess_area = calculate_excess_area(feature, self.farmplots_layer)
-        new_area_diff = calculate_area_diff(feature, self.survey_georef_layer)
-        new_perimeter_diff = calculate_perimeter_diff(feature, self.survey_georef_layer)
-        new_deviation = calculate_deviation(feature, self.survey_georef_layer)
-        new_corrected_area_diff = calculate_corrected_area_diff(feature, self.survey_georef_layer)
-    
-        feature.setAttribute('akarbandh_area_diff', new_akarbandh_area_diff)
-        ind = self.layer.fields().indexFromName('varp')
-        feature.setAttribute(ind, float(new_varp))        
-        feature.setAttribute('shape_index', new_shape_index)
-        feature.setAttribute('farm_rating', new_farm_rating)
-        feature.setAttribute('farm_intersection', new_farm_intersection)
-        feature.setAttribute('farm_rating_nodes', new_farm_rating_nodes)
-        feature.setAttribute('excess_area', new_excess_area)
-        feature.setAttribute('area_diff', new_area_diff)
-        feature.setAttribute('perimeter_diff', new_perimeter_diff)
-        feature.setAttribute('deviation', new_deviation)
-        feature.setAttribute('corrected_area_diff', new_corrected_area_diff)
+        fields = self.layer.fields()
+        
+        if fields.indexFromName('akarbandh_area_diff') != -1 and fields.indexFromName('akarbandh_area') != -1:
+            print(fields.indexFromName('akarbandh_area_diff'))
+            new_akarbandh_area_diff = calculate_akarbandh_area_diff(feature)
+            feature.setAttribute('akarbandh_area_diff', new_akarbandh_area_diff)
+            
+        if fields.indexFromName('varp') != -1:
+            new_varp = calculate_varp(feature)
+            if np.isnan(new_varp) or new_varp is None or new_varp == "":
+                new_varp = 1
+            ind = self.layer.fields().indexFromName('varp')
+            feature.setAttribute(ind, float(new_varp))        
+        
+        if fields.indexFromName('shape_index') != -1:
+            new_shape_index = calculate_shape_index(feature)
+            feature.setAttribute('shape_index', new_shape_index)
+        
+        if fields.indexFromName('farm_rating') != -1:           
+            new_farm_rating = calculate_farm_rating(feature, self.method, self.farmplots_layer)
+            feature.setAttribute('farm_rating', new_farm_rating)
+        
+        if fields.indexFromName('farm_intersection') != -1:
+            new_farm_intersection = calculate_farm_intersection(feature, self.farmplots_layer)
+            feature.setAttribute('farm_intersection', new_farm_intersection)
+            
+        if fields.indexFromName('farm_rating_nodes') != -1:
+            new_farm_rating_nodes = calculate_farm_rating_nodes(feature, self.farm_corner_nodes, self.corner_nodes_layer)
+            feature.setAttribute('farm_rating_nodes', new_farm_rating_nodes)
+        
+        if fields.indexFromName('excess_area') != -1:
+            new_excess_area = calculate_excess_area(feature, self.farmplots_layer)
+            feature.setAttribute('excess_area', new_excess_area)
+        
+        if fields.indexFromName('area_diff') != -1:
+            new_area_diff = calculate_area_diff(feature, self.survey_georef_layer)
+            feature.setAttribute('area_diff', new_area_diff)
+        
+        if fields.indexFromName('perimeter_diff') != -1:
+            new_perimeter_diff = calculate_perimeter_diff(feature, self.survey_georef_layer)
+            feature.setAttribute('perimeter_diff', new_perimeter_diff)
+            
+        if fields.indexFromName('deviation') != -1:
+            new_deviation = calculate_deviation(feature, self.survey_georef_layer)
+            feature.setAttribute('deviation', new_deviation)
+        
+        if fields.indexFromName('corrected_area_diff') != -1:
+            new_corrected_area_diff = calculate_corrected_area_diff(feature, self.survey_georef_layer)
+            feature.setAttribute('corrected_area_diff', new_corrected_area_diff)
+        
     
     def generate_heatmap(self, attribute):
         print("generating heatmap")
@@ -624,7 +649,6 @@ class Main:
             else:
                 i = (ind + 1)%n
                 j = (ind + n - 1)%n
-            print("OOOOOhhhhhNNNOOOO", ind, i, j, n)
             
             prev_vertex = vertex_list[ind]
             dist = 0
@@ -724,7 +748,7 @@ class Main:
             rubberBand.setWidth(10)
             self.rubber_bands.append(rubberBand)
         
-            
+        
     
     def RemoveHighlight(self):
         for rb in self.rubber_bands:
@@ -763,7 +787,10 @@ class Main:
         
     def save_layer_postgres(self):
         schema = self.village
-        table_name = f"{self.map}_editing"
+        if 'editing' in self.map:
+            table_name = self.map
+        else:
+            table_name = f"{self.map}_editing"
         drop_table(self.psql_conn, schema, table_name)
         uri = QgsDataSourceUri()
         uri.setConnection(psql['host'], psql['port'], psql['database'], psql['user'], psql['password'])
@@ -771,8 +798,11 @@ class Main:
         err = QgsVectorLayerExporter.exportLayer(self.layer, uri.uri(), "postgres", QgsCoordinateReferenceSystem(), False)
 
         print("Is logs first time ", self.logs_first_time)
-
-        logs_name = f"{self.map}_logs"
+        if '_editing' in self.map:
+            mapp = self.map.replace('_editing', '')
+        else :
+            mapp = self.map
+        logs_name = f"{mapp}_logs"
         if self.logs_first_time:
             drop_table(self.psql_conn, schema, logs_name)
             create_logs_table(self.psql_conn, schema, logs_name)
@@ -783,8 +813,6 @@ class Main:
             print("Layer saved successfully")  
             print("Updating logs")
             
-            # TODO : Add Code to add rows to logs table
-            # Rows stored as list in self.logs
             for log in self.logs:
                 node_id = log[0]
                 old_x = log[1]

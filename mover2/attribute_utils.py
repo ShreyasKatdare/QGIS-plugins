@@ -5,6 +5,7 @@ from qgis.gui import QgsRubberBand
 from qgis.PyQt import QtGui
 
 def calculate_akarbandh_area_diff(feature):
+    
     akarbandh_area = feature.attribute('akarbandh_area')
 
     if not (isinstance(akarbandh_area, float) or isinstance(akarbandh_area, int)):
