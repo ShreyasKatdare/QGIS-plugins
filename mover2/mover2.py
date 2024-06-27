@@ -33,6 +33,8 @@ from .mover2_dialog import mover2Dialog
 import os.path
 
 
+#NOTE : ONLY CHANGE THE CODE IN THE run() FUNCTION if you want to change the functionality of the plugin
+# Rest all functions are default functions that are present in the plugin builder template
 
 class mover2:
     """QGIS Plugin Implementation."""
@@ -181,7 +183,7 @@ class mover2:
                 action)
             self.iface.removeToolBarIcon(action)
 
-
+    #NOTE : ONLY CHANGE THE CODE IN THE run() FUNCTION if you want to change the functionality of the plugin
     def run(self):
         """Run method that performs all the real work"""
 
@@ -197,8 +199,6 @@ class mover2:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
+            # Creates a new editing session : instance of Main class where all the editing functions are present
             editing_session = Main(self)
-            # self.side_bar = SideBar(self, editing_session)
             editing_session.run()

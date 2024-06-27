@@ -32,7 +32,7 @@ from .LGanalysis_dialog import LGanalysisDialog
 import os.path
 import os
 from .psql import *
-from .LGanalysis_dialog import HeatMapToggle
+from .LGanalysis_dialog import *
 
 import psycopg2
 import os
@@ -224,6 +224,12 @@ class LGanalysis:
 
 
     def initiate(self):
+        '''
+        Initializes the input parameters such as 'farmplots map name', 'survey georeferenced map', 
+        'jitter spline map', 'jitter polygon map', 'side bar', 'host', 'user', 'port', 
+        'password', 'database' for the plugin based on user inputs inside the dialog box.
+        '''
+
         if self.dlg.lineEdit_farmplots.text():
             self.farmplots_in = self.dlg.lineEdit_farmplots.text()
         else:
@@ -244,7 +250,7 @@ class LGanalysis:
         else:
             self.jitter_polygon_in = "jitter_polygons_regularised_03"
             
-        self.heatmap_toggle = None
+        self.side_bar = None
         
         if self.dlg.lineEdit_host.text():
             self.host = self.dlg.lineEdit_host.text()
@@ -272,6 +278,10 @@ class LGanalysis:
             self.database = "dolr"
     
     def load_maps(self):
+        '''
+        Loads the maps from the database and adds them to the QGIS project in specified order and symbology.
+        '''
+
         maps = [self.farmplots_in, self.survey_georef_in, self.jitter_spline_in, self.jitter_polygon_in]
         village = self.dlg.village_in.text()
         map = maps[0]
@@ -338,6 +348,16 @@ class LGanalysis:
         
         
     def generate_heatmap(self, attribute, custom_field = None, custom_ranges = None):
+        '''
+        Generates a heatmap coloring based on the attribute specified by the user. The heatmap is generated based on the attribute values
+        and the color ramp specified in the function. The heatmap is generated on the jitter spline map.
+        :param attribute: The attribute / column based on which the heatmap is to be generated.
+                          This will be 'custom' if user wants to generate heatmap based on custom attribute and ranges.
+        :param custom_field: The custom field name for which the heatmap is to be generated.
+                             Used only when attribute is 'custom'.
+        :param custom_ranges: The custom ranges for which the heatmap is to be generated.
+        '''
+        
         print("generating heatmap")
         layer = QgsProject.instance().mapLayersByName(self.jitter_spline_in)[0]
         field = attribute
@@ -396,13 +416,20 @@ class LGanalysis:
         self.iface.layerTreeView().refreshLayerSymbology(layer.id())
         
     def on_layers_removed(self, layers):
+        '''
+        Removes the side bar if all the layers are removed from the QGIS project.
+        '''
+    
         if len(QgsProject.instance().mapLayers()) == 0:
-            if self.heatmap_toggle:
-                self.iface.removeDockWidget(self.heatmap_toggle)
-                self.heatmap_toggle.deleteLater()
-                self.heatmap_toggle = None
+            if self.side_bar:
+                self.iface.removeDockWidget(self.side_bar)
+                self.side_bar.deleteLater()
+                self.side_bar = None
     
     def remove_heatmap(self):
+        '''
+        Removes the heatmap coloring from the jitter spline map.
+        '''
         print("removing heatmap")
         layer = QgsProject.instance().mapLayersByName(self.jitter_spline_in)[0]
         symbol = QgsFillSymbol.createSimple({'color': QColor(0,0,0,0), 'outline_color': QColor('#e41a1c'), 'outline_width': '1'})
@@ -412,6 +439,10 @@ class LGanalysis:
     
     def run(self):
         """Run method that performs all the real work"""
+        '''
+        The main function of the plugin. This function is called when the plugin is run.
+        This function is called every time when the user clicks on the plugin icon in the QGIS toolbar.
+        '''
 
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
@@ -430,7 +461,7 @@ class LGanalysis:
             QgsProject.instance().layersRemoved.connect(self.on_layers_removed)
             self.initiate()
             self.load_maps()
-            if self.heatmap_toggle is None:    
-                self.heatmap_toggle = HeatMapToggle(self.iface.mainWindow(), self)
-                self.iface.addDockWidget(Qt.RightDockWidgetArea, self.heatmap_toggle)
+            if self.side_bar is None:
+                self.side_bar = sideBar(self.iface.mainWindow(), self)
+                self.iface.addDockWidget(Qt.RightDockWidgetArea, self.side_bar)
                 

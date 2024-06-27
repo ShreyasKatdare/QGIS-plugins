@@ -83,8 +83,26 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 
 class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
+    '''
+    This class is used to create the dialog box for the plugin which pops 
+    up when the plugin icon is clicked
+    If you want to change fields in the dialog box, you can do that here 
+    or to add new buttons on the dialog box, you can add them by opening the
+    mover2_dialog_base.ui file in Qt Designer and adding the buttons there and changing
+    the code in this file accordingly
+    '''
     def __init__(self, iface, parent=None):
-        """Constructor."""
+        """
+        Constructor.
+        :param iface: An interface instance that will be passed to this class
+                      which provides the hook by which you can manipulate the QGIS
+                      application at run time.
+        :type iface: QgsInterface
+
+        :param parent: Not needed here
+        :type parent: QWidget
+
+        """
         super(mover2Dialog, self).__init__(parent)
         # Set up the user interface from Designer through FORM_CLASS.
         # After self.setupUi() you can access any designer object by doing
@@ -106,6 +124,12 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.label_13.hide()
         self.label_16.hide()
         
+        # If you want to add additional map name to drop down, add it here
+        self.mapCombo.addItems(['jitter_spline_output_regularised_03', 'survey_georeferenced', 'shifted_faces', 'jitter_spline_output_regularised_05', 'farm_graph_faces', 'jitter_spline_output_regularised_03_editing', 'survey_georeferenced_editing', 'shifted_faces_editing', 'jitter_spline_output_regularised_05_editing', 'farm_graph_faces_editing'])
+        
+        # The following code is used to set the default values for the fields in the dialog box
+        # like the host, port, user, password, database, farmplots, etc.
+
         self.lineEdit_farmplots.setText('farmplots')
         self.lineEdit_host.setText('localhost')
         self.lineEdit_port.setText('5432')
@@ -119,13 +143,16 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.lineEdit_user.hide()
         self.lineEdit_password.hide()
         self.lineEdit_database.hide()
-        self.mapCombo.addItems(['jitter_spline_output_regularised_03', 'survey_georeferenced', 'shifted_faces', 'jitter_spline_output_regularised_05', 'farm_graph_faces', 'jitter_spline_output_regularised_03_editing', 'survey_georeferenced_editing', 'shifted_faces_editing', 'jitter_spline_output_regularised_05_editing', 'farm_graph_faces_editing'])
         self.ratingCombo.addItems(['worst_3_avg', 'all_avg'])
         self.ratingCombo.setCurrentText('worst_3_avg')
         self.showButton.clicked.connect(self.show_hide)
         
     
     def show_hide(self):
+        '''
+        This function is used to show or hide the additional fields
+        '''
+
         if self.hide_show_more:
             self.ratingLabel.show()
             self.ratingCombo.show()

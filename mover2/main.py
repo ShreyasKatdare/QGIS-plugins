@@ -56,23 +56,51 @@ from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDockWidget, QMessa
 
 
 class Main:
+    '''
+    This class is the main class of the plugin where all the core logic and 
+    functionality of the plugin is implemented
+    '''
     def __init__(self, parent):
+        '''
+        Constructor
+        :param parent: The parent widget, here parent is instance of mover2 class which is
+                       used to get the iface and dialog box
+        '''
         self.parent = parent
         self.dlg = self.parent.dlg
         self.iface = self.parent.iface
         self.canvas = self.iface.mapCanvas()
         self.side_bar = None
+
+        # This is the parameter to display when user clicks on one of the parameters 
+        # under 'parameter to display' in the side bar
         self.param_selected = None
+        
+        # These 3 lists are used to store the old, new, transformed (vertices which lie between
+        # selected vertex and pivots) vertices to implement undo functionality
         self.history_old_vertices = []
         self.history_new_vertices = []
         self.history_transformed_vertices = []
+
+        # Dictionary to store whether a vertex is a corner or not for editing map
         self.is_corner = {}
+
+        # List to store highlighted rubber bands
         self.rubber_bands = []
+
+        # List to store the points between selected vertex and pivots
         self.points_to_transform = []
+
+        # Layer on which editing is to be done
         self.layer = None
+
+        # Node id of selected vertex
         self.node_id = None
         
+        # flag to tell whether logs table is to be dropped and newly created
         self.logs_first_time = False
+
+        # List to store the history logs of the changes made
         self.logs = []
         
     

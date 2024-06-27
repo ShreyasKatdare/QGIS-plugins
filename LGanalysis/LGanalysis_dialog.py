@@ -70,6 +70,13 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 class LGanalysisDialog(QtWidgets.QDialog, FORM_CLASS):
     def __init__(self, iface, parent=None):
         """Constructor."""
+        '''
+        This is the constructor for the LGanalysisDialog class.
+        It initializes the dialog box and sets up the user interface which appears when 
+        user clicks on the plugin icon. To know more about the user interface, refer to the
+        LGanalysis_dialog_base.ui file in the same directory. Open the file using Qt Designer.
+        '''
+
         super(LGanalysisDialog, self).__init__(parent)
         # Set up the user interface from Designer through FORM_CLASS.
         # After self.setupUi() you can access any designer object by doing
@@ -83,6 +90,10 @@ class LGanalysisDialog(QtWidgets.QDialog, FORM_CLASS):
         self.showButton.clicked.connect(self.showMore)
         self.ishide = True
         
+        '''
+        Set predefined standard values for the input fields
+        '''
+
         self.lineEdit_host.setText("localhost")
         self.lineEdit_port.setText("5432")
         self.lineEdit_user.setText("postgres")
@@ -93,6 +104,10 @@ class LGanalysisDialog(QtWidgets.QDialog, FORM_CLASS):
         self.lineEdit_jitter_polygon.setText("jitter_polygons_regularised_03")
         self.lineEdit_farmplots.setText("farmplots")
         
+        '''
+        Implementing show more button (just for fun :P)
+        '''
+
         self.lineEdit_farmplots.hide()
         self.lineEdit_host.hide()
         self.lineEdit_port.hide()
@@ -118,6 +133,9 @@ class LGanalysisDialog(QtWidgets.QDialog, FORM_CLASS):
         
         
     def showMore(self):
+        '''
+        Implementing show more button (just for fun :P)
+        '''
         if self.ishide:
             self.lineEdit_farmplots.show()
             self.lineEdit_host.show()
@@ -168,9 +186,15 @@ class LGanalysisDialog(QtWidgets.QDialog, FORM_CLASS):
             self.ishide = True
     
     
-class HeatMapToggle(QDockWidget):
+class sideBar(QDockWidget):
+    '''
+    This class is used to create a sidebar for the plugin. The sidebar contains checkboxes
+    to select the type of heatmap the user wants to generate. The user can also add custom heatmaps by specifying the field name
+    and the range of values for the heatmap.
+    '''
+    
     def __init__(self, parent=None, grandpa=None):
-        super(HeatMapToggle, self).__init__(parent)
+        super(sideBar, self).__init__(parent)
         self.grandpa = grandpa
         self.num_heatmaps = 4
         self.ranges = {}
@@ -195,20 +219,24 @@ class HeatMapToggle(QDockWidget):
         self.checkbox3.setFont(QFont("Helvetica", 15))
         self.checkbox4.setFont(QFont("Helvetica", 15))
         
-        self.new_layout = QFormLayout()
-        self.new_layout.addRow(self.label)
-        self.new_layout.addRow(self.checkbox1)
-        self.new_layout.addRow(self.checkbox2)
-        self.new_layout.addRow(self.checkbox3)
-        self.new_layout.addRow(self.checkbox4)
-        self.new_layout.addRow(self.new_heatmap_pbutton)
+        self.form_layout = QFormLayout()
+        self.form_layout.addRow(self.label)
+        self.form_layout.addRow(self.checkbox1)
+        self.form_layout.addRow(self.checkbox2)
+        self.form_layout.addRow(self.checkbox3)
+        self.form_layout.addRow(self.checkbox4)
+        self.form_layout.addRow(self.new_heatmap_pbutton)
 
         widget = QWidget()
-        widget.setLayout(self.new_layout)
+        widget.setLayout(self.form_layout)
         self.setWidget(widget)
         
         
     def on_checkbox1_state_changed(self, state):
+        '''
+        This function is called when the user checks the checkbox for farm rating heatmap.
+        '''
+        
         if state == Qt.Checked:
             if self.checkbox2.isChecked():
                 self.checkbox2.setChecked(False)
@@ -220,6 +248,10 @@ class HeatMapToggle(QDockWidget):
             self.grandpa.remove_heatmap()
             
     def on_checkbox2_state_changed(self, state):
+        '''
+        This function is called when the user checks the checkbox for corrected area difference heatmap.
+        '''
+        
         if state == Qt.Checked:
             if self.checkbox1.isChecked():
                 self.checkbox1.setChecked(False)
@@ -230,6 +262,10 @@ class HeatMapToggle(QDockWidget):
             self.grandpa.remove_heatmap()
        
     def on_checkbox3_state_changed(self, state):
+        '''
+        This function is called when the user checks the checkbox for excess area heatmap.
+        '''
+        
         if state == Qt.Checked:
             if self.checkbox1.isChecked():
                 self.checkbox1.setChecked(False)
@@ -240,6 +276,10 @@ class HeatMapToggle(QDockWidget):
             self.grandpa.remove_heatmap()
             
     def on_checkbox4_state_changed(self, state):
+        '''
+        This function is called when the user checks the checkbox for farm rating nodes heatmap.
+        '''
+        
         if state == Qt.Checked:
             if self.checkbox1.isChecked():
                 self.checkbox1.setChecked(False)
@@ -252,9 +292,15 @@ class HeatMapToggle(QDockWidget):
             self.grandpa.remove_heatmap()
          
     def add_custom_heatmap(self):
+        '''
+        This function is called when the user clicks on the "Add Custom Heatmap" button.
+        It adds boxes in form layout to take input from the user for the custom heatmap.
+        '''
+        
+        
         field_label = QLabel("Field name")
         line_edit = QLineEdit()
-        self.new_layout.addRow(field_label, line_edit)
+        self.form_layout.addRow(field_label, line_edit)
         label2 = QLabel("select ranges from good(green) to bad(red)")
         label3 = QLabel("to")
         box1 = QLineEdit()
@@ -269,14 +315,19 @@ class HeatMapToggle(QDockWidget):
         hbox2 = QHBoxLayout()
         hbox2.addWidget(self.pushadd)
         hbox2.addWidget(self.pushgen)
-        self.new_layout.addRow(label2)
-        self.new_layout.addRow(hbox)
-        self.new_layout.addRow(hbox2)
+        self.form_layout.addRow(label2)
+        self.form_layout.addRow(hbox)
+        self.form_layout.addRow(hbox2)
         self.pushadd.clicked.connect(self.add_range)
         self.pushgen.clicked.connect(self.generate_custom_heatmap)
         
     def add_range(self):
-        count = self.new_layout.rowCount()
+        '''
+        This function is called when the user clicks on the "Add more ranges" button.
+        It adds more boxes in form layout to take input from the user for the custom heatmap.
+        '''
+        
+        count = self.form_layout.rowCount()
         label3 = QLabel("to")
         box1 = QLineEdit()
         box2 = QLineEdit()
@@ -284,22 +335,27 @@ class HeatMapToggle(QDockWidget):
         hbox.addWidget(box1)
         hbox.addWidget(label3)
         hbox.addWidget(box2)
-        self.new_layout.insertRow(count -1, hbox)
+        self.form_layout.insertRow(count -1, hbox)
         
 
     def generate_custom_heatmap(self):
-        self.num_heatmaps += 1
-        self.fields[self.num_heatmaps] = f"{self.new_layout.itemAt(self.num_heatmaps + 1, QFormLayout.FieldRole).widget().text()}"
-        checkbox = QCheckBox(f"{self.new_layout.itemAt(self.num_heatmaps + 1, QFormLayout.FieldRole).widget().text()} (Custom heatmap)")
-        checkbox.setFont(QFont("Helvetica", 15))
-        checkbox.stateChanged.connect(lambda state, num=self.num_heatmaps: self.foo(state, num))
-        self.new_layout.insertRow(self.num_heatmaps, checkbox)
+        '''
+        This function is called when the user clicks on the "Generate" button.
+        It generates the custom heatmap checkbox based on the input provided by the user.
+        '''
         
-        count = self.new_layout.rowCount()
+        self.num_heatmaps += 1
+        self.fields[self.num_heatmaps] = f"{self.form_layout.itemAt(self.num_heatmaps + 1, QFormLayout.FieldRole).widget().text()}"
+        checkbox = QCheckBox(f"{self.form_layout.itemAt(self.num_heatmaps + 1, QFormLayout.FieldRole).widget().text()} (Custom heatmap)")
+        checkbox.setFont(QFont("Helvetica", 15))
+        checkbox.stateChanged.connect(lambda state, num=self.num_heatmaps: self.custom_heatmap_check(state, num))
+        self.form_layout.insertRow(self.num_heatmaps, checkbox)
+        
+        count = self.form_layout.rowCount()
         
         self.ranges[self.num_heatmaps] = []
         for i in range(self.num_heatmaps + 4, count -1):
-            hbox = self.new_layout.itemAt(i, QFormLayout.FieldRole).layout()
+            hbox = self.form_layout.itemAt(i, QFormLayout.FieldRole).layout()
             range_start = float(hbox.itemAt(0).widget().text())
             range_end = float(hbox.itemAt(2).widget().text())
 
@@ -308,10 +364,14 @@ class HeatMapToggle(QDockWidget):
         print(self.ranges[self.num_heatmaps])
         i = self.num_heatmaps + 2
         while i < count:
-            self.new_layout.removeRow(self.num_heatmaps + 2)
+            self.form_layout.removeRow(self.num_heatmaps + 2)
             i += 1
     
-    def foo(self, state, num):
+    def custom_heatmap_check(self, state, num):
+        '''
+        This function is called when the user checks the checkbox for newly created custom heatmap.
+        '''
+        
         if state == Qt.Checked:
             self.grandpa.generate_heatmap("custom", self.fields[num], self.ranges[num])
         else:

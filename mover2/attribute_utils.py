@@ -5,6 +5,11 @@ from qgis.gui import QgsRubberBand
 from qgis.PyQt import QtGui
 
 def calculate_akarbandh_area_diff(feature):
+    '''
+    :param feature: QgsFeature
+    Calculate the difference between the area of the feature and the akarbandh area.
+    NOTE : The attribute named 'akarbandh_area' should be present in the feature.
+    '''
     
     akarbandh_area = feature.attribute('akarbandh_area')
 
@@ -14,6 +19,11 @@ def calculate_akarbandh_area_diff(feature):
     return (feature.geometry().area()/10000 - akarbandh_area)/akarbandh_area
     
 def calculate_varp(feature):
+    '''
+    :param feature: QgsFeature
+    Calculates the varp of the feature.
+    '''
+
     geom = feature.geometry()
     points_list = [vertex for vertex in geom.vertices()]
 
@@ -39,9 +49,20 @@ def calculate_varp(feature):
     return varp
 
 def calculate_shape_index(feature):
+    '''
+    :param feature: QgsFeature
+    Calculates the shape index of the feature using the formula (perimeter^2)/area.
+    '''
     return (feature.geometry().length() * feature.geometry().length()) / feature.geometry().area()
 
 def calculate_farm_rating(feature, method, farmplots_layer):
+    '''
+    :param feature: QgsFeature
+    :param method: str
+    :param farmplots_layer: QgsVectorLayer
+    Calculates the farm rating of the feature using the method specified with the farmplots_layer.
+    '''
+    
     if method == 'all_avg':
         geom_a = feature.geometry()
         ratings = []
@@ -96,6 +117,20 @@ def calculate_farm_rating(feature, method, farmplots_layer):
             return 0.0
 
 def calculate_farm_intersection(feature, farmplots_layer):
+    '''
+    :param feature: The feature for which to calculate the farm intersection.
+    :type feature: QgsFeature
+
+    :param farmplots_layer: The farmplots layer to compare with.
+    :type farmplots_layer: QgsVectorLayer
+
+    :return: The ratio of the intersection area to the area of the feature.
+    :rtype: float
+
+    Calculates the intersection area of the feature with the farmplots_layer and
+    returns the ratio of the intersection area to the area of the feature.
+    '''
+
     geom_a = feature.geometry()
     intersection_area = 0
     features = farmplots_layer.getFeatures()
@@ -107,6 +142,19 @@ def calculate_farm_intersection(feature, farmplots_layer):
     
 
 def calculate_farm_rating_nodes(feature, farm_topo_nodes, map_corner_nodes):
+    '''
+    :param feature: The feature for which to calculate the farm_rating_nodes.
+    :type feature: QgsFeature
+
+    :param farm_topo_nodes: The layer having the nodes of farmplots.
+    :type farm_topo_nodes: QgsVectorLayer
+
+    :param map_corner_nodes: The layer having the corner nodes of the editing map(e.g. jitter_spline_output_regularised_03).
+    
+    Calculates the farm_rating_nodes of the feature using the farm_topo_nodes and map_corner_nodes.
+    
+    '''
+    
     farm_nodes = farm_topo_nodes.getFeatures()
     farm_nodes = list(farm_nodes)
     farm_rating_node = 0
@@ -145,6 +193,18 @@ def calculate_farm_rating_nodes(feature, farm_topo_nodes, map_corner_nodes):
 
 
 def calculate_excess_area(feature, farmplots_layer):
+    '''
+    :param feature: The feature for which to calculate the excess area.
+    :type feature: QgsFeature
+
+    :param farmplots_layer: The farmplots layer to compare with.
+    :type farmplots_layer: QgsVectorLayer
+
+    :return: The excess area of the feature.
+    :rtype: float
+    
+    Calculates the percentage excess area of a given feature with respect to a farmplots layer.
+    '''
     geom_a = feature.geometry()
     excess_area = 0
     features = farmplots_layer.getFeatures()
@@ -158,6 +218,20 @@ def calculate_excess_area(feature, farmplots_layer):
     return excess_area / geom_a.area()
 
 def calculate_area_diff(feature, survey_georeferenced_map):
+    '''
+    :param feature: The feature for which to calculate the area difference.
+    :type feature: QgsFeature
+
+    :param survey_georeferenced_map: The survey georeferenced map layer.
+    :type survey_georeferenced_map: QgsVectorLayer
+
+    :return: The area difference of the feature.
+    :rtype: float
+
+    Calculates the area difference of a given feature with respect to a survey georeferenced map.
+    '''
+    
+    
     if not (isinstance(feature.attribute('area_diff'), float) or isinstance(feature.attribute('area_diff'), int)):
         return None
         
@@ -167,6 +241,21 @@ def calculate_area_diff(feature, survey_georeferenced_map):
     return None
     
 def calculate_perimeter_diff(feature, survey_georeferenced_map):
+    '''
+    :param feature: The feature for which to calculate the perimeter difference.
+    :type feature: QgsFeature
+
+    :param survey_georeferenced_map: The survey georeferenced map layer.
+    :type survey_georeferenced_map: QgsVectorLayer
+
+    :return: The perimeter difference of the feature.
+    :rtype: float
+
+    Calculates the perimeter difference of a given feature with respect to a survey georeferenced map.
+
+    '''
+    
+    
     if not (isinstance(feature.attribute('perimeter_diff'), float) or isinstance(feature.attribute('perimeter_diff'), int)):
         return None
         
@@ -176,6 +265,19 @@ def calculate_perimeter_diff(feature, survey_georeferenced_map):
     return None
 
 def calculate_deviation(feature, survey_georeferenced_map):
+    '''
+    :param feature: The feature for which to calculate the deviation.
+    :type feature: QgsFeature
+
+    :param survey_georeferenced_map: The survey georeferenced map layer.
+    :type survey_georeferenced_map: QgsVectorLayer
+
+    :return: The deviation of the feature.
+    :rtype: float
+
+    Calculates the deviation of a given feature with respect to a survey georeferenced map.
+    '''
+    
     if not (isinstance(feature.attribute('deviation'), float) or isinstance(feature.attribute('deviation'), int)):
         return None
     
@@ -205,6 +307,19 @@ def calculate_deviation(feature, survey_georeferenced_map):
     
     
 def calculate_corrected_area_diff(feature, survey_georeferenced_map):
+    '''
+    :param feature: The feature for which to calculate the corrected area difference.
+    :type feature: QgsFeature
+
+    :param survey_georeferenced_map: The survey georeferenced map layer.
+    :type survey_georeferenced_map: QgsVectorLayer
+
+    :return: The corrected area difference of the feature.
+    :rtype: float
+
+    Calculates the corrected area difference of a given feature with respect to a survey georeferenced map.
+    '''
+    
     if not isinstance(feature.attribute('corrected_area_diff'), float) or isinstance(feature.attribute('corrected_area_diff'), int):
         return None
     for survey_feature in survey_georeferenced_map.getFeatures():

@@ -415,6 +415,25 @@ def segmentize(psql_conn, topo_name, seg_tol, seg_length = 10000):
 
 
 def create_logs_table(psql_conn, schema, table):
+    '''
+    :param psql_conn: PGConn object
+    :type psql_conn: PGConn
+
+    :param schema: schema name
+    "type schema: str
+
+    :param table: table name
+    :type table: str
+
+    Creates a table to log the changes made to the vertices having the following columns:
+    id: serial primary key
+    time: timestamp default current_timestamp
+    vertex_id: integer (could be found from all_nodes map )
+    old_geom: varchar(255) (x and y coordinates of the old vertex)
+    new_geom: varchar(255) (x and y coordinates of the new vertex)
+    '''
+    
+    
     sql = f'''
         create table {schema}.{table} (
             id serial primary key,
@@ -429,6 +448,35 @@ def create_logs_table(psql_conn, schema, table):
     psql_conn.connection().commit()
         
 def insert_log(psql_conn, schema, table, node_id, old_x, old_y, new_x, new_y):
+    '''
+    :param psql_conn: PGConn object
+    :type psql_conn: PGConn
+    
+    :param schema: schema name
+    :type schema: str
+    
+    :param table: table name
+    :type table: str
+    
+    :param node_id: vertex id
+    :type node_id: int
+    
+    :param old_x: x coordinate of the old vertex
+    :type old_x: float
+    
+    :param old_y: y coordinate of the old vertex
+    :type old_y: float
+    
+    :param new_x: x coordinate of the new vertex
+    :type new_x: float
+
+    :param new_y: y coordinate of the new vertex
+    :type new_y: float
+
+    Inserts the log of the changes made to the vertex into the table
+    '''
+    
+    
     old_x = round(old_x, 2)
     old_y = round(old_y, 2)
     new_x = round(new_x, 2)

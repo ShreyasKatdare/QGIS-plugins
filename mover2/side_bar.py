@@ -4,7 +4,20 @@ from PyQt5.QtCore import Qt
 from qgis.core import QgsVectorFileWriter
 
 class SideBar(QDockWidget):
+    
     def __init__(self, parent, editing_session):
+        '''
+        A custom dock widget representing the side bar in the application.
+        
+        This class provides a side bar widget (UI) that contains various editing tools and options for the application.
+        It allows the user to select parameters, start and stop editing, undo actions, generate heatmaps, and save layers.
+        
+        Args:
+            parent (QWidget): The parent widget of the side bar.
+            editing_session (EditingSession): The editing session object associated with the side bar.
+            NOTE : This editing session is object of class main written in main.py. It is used to access the functions of main class.
+        '''
+    
         super(SideBar, self).__init__(parent)
         self.editing_session = editing_session
         
@@ -102,6 +115,14 @@ class SideBar(QDockWidget):
         
 
     def farm_rating_heatmap(self, state):
+        '''
+        :param state: The state of the checkbox (checked or unchecked).
+        :type state: Qt.CheckState
+
+        This function is called when the user checks or unchecks the farm rating heatmap checkbox.
+        It generates the farm rating heatmap if the checkbox is checked, and removes the heatmap if the checkbox is unchecked.
+        '''
+        
         if state == Qt.Checked:
             if self.corrected_area_diff_heatmap_button.isChecked():
                 self.corrected_area_diff_heatmap_button.setChecked(False)
@@ -115,6 +136,15 @@ class SideBar(QDockWidget):
             self.editing_session.remove_heatmap()
             
     def corrected_area_diff_heatmap(self, state):
+        '''
+        :param state: The state of the checkbox (checked or unchecked).
+        :type state: Qt.CheckState
+
+        This function is called when the user checks or unchecks the corrected area difference heatmap checkbox.
+        It generates the corrected area difference heatmap if the checkbox is checked, and removes the heatmap if the checkbox is unchecked.
+        '''
+        
+        
         if state == Qt.Checked:
             if self.farm_rating_heatmap_button.isChecked():
                 self.farm_rating_heatmap_button.setChecked(False)
@@ -127,6 +157,14 @@ class SideBar(QDockWidget):
             self.editing_session.remove_heatmap()
 
     def excess_area_heatmap(self, state):
+        '''
+        :param state: The state of the checkbox (checked or unchecked).
+        :type state: Qt.CheckState
+        
+        This function is called when the user checks or unchecks the excess area heatmap checkbox.
+        It generates the excess area heatmap if the checkbox is checked, and removes the heatmap if the checkbox is unchecked.
+        '''
+        
         if state == Qt.Checked:
             if self.farm_rating_heatmap_button.isChecked():
                 self.farm_rating_heatmap_button.setChecked(False)
@@ -139,6 +177,14 @@ class SideBar(QDockWidget):
             self.editing_session.remove_heatmap()
             
     def farm_rating_node_heatmap(self, state):
+        '''
+        :param state: The state of the checkbox (checked or unchecked).
+        :type state: Qt.CheckState
+
+        This function is called when the user checks or unchecks the farm rating nodes heatmap checkbox.
+        It generates the farm rating nodes heatmap if the checkbox is checked, and removes the heatmap if the checkbox is unchecked.
+        '''
+        
         if state == Qt.Checked:
             if self.farm_rating_heatmap_button.isChecked():
                 self.farm_rating_heatmap_button.setChecked(False)
@@ -151,6 +197,11 @@ class SideBar(QDockWidget):
             self.editing_session.remove_heatmap()
 
     def save_layer_locally(self):
+        '''
+        This function is called when the user clicks the "Save Layer Locally" button.
+        It opens a file dialog to allow the user to save the current layer to a local file.
+        '''
+        
         file_name, _ = QFileDialog.getSaveFileName(self, "Save Layer", "", "Shapefile (*.shp);;GeoJSON (*.geojson)")
         print("file_name : ", file_name)
         if file_name:
