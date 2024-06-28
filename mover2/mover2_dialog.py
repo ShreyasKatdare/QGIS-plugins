@@ -119,6 +119,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.label_4.hide()
         self.label_5.hide()
         self.label_6.hide()
+        self.label_7.hide()
+        self.label_8.hide()
         self.label_10.hide()
         self.label_11.hide()
         self.label_13.hide()
@@ -136,6 +138,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.lineEdit_user.setText('postgres')
         self.lineEdit_password.setText('postgres')
         self.lineEdit_database.setText('dolr')
+        self.lineEdit_survey_georef.setText('survey_georeferenced')
+        self.lineEdit_farm_nodes.setText('farm_corner_nodes')
         
         self.lineEdit_farmplots.hide()
         self.lineEdit_host.hide()
@@ -143,6 +147,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
         self.lineEdit_user.hide()
         self.lineEdit_password.hide()
         self.lineEdit_database.hide()
+        self.lineEdit_survey_georef.hide()
+        self.lineEdit_farm_nodes.hide()
         self.ratingCombo.addItems(['worst_3_avg', 'all_avg'])
         self.ratingCombo.setCurrentText('worst_3_avg')
         self.showButton.clicked.connect(self.show_hide)
@@ -162,6 +168,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             self.label_4.show()
             self.label_5.show()
             self.label_6.show()
+            self.label_7.show()
+            self.label_8.show()
             self.label_10.show()
             self.label_11.show()
             self.label_13.show()
@@ -173,7 +181,9 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             self.lineEdit_user.show()
             self.lineEdit_password.show()
             self.lineEdit_database.show()
-            
+            self.lineEdit_survey_georef.show()
+            self.lineEdit_farm_nodes.show()
+
             self.hide_show_more = False
         else:
             self.ratingLabel.hide()
@@ -184,6 +194,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             self.label_4.hide()
             self.label_5.hide()
             self.label_6.hide()
+            self.label_7.hide()
+            self.label_8.hide()
             self.label_10.hide()
             self.label_11.hide()
             self.label_13.hide()
@@ -195,6 +207,8 @@ class mover2Dialog(QtWidgets.QDialog, FORM_CLASS):
             self.lineEdit_user.hide()
             self.lineEdit_password.hide()
             self.lineEdit_database.hide()
+            self.lineEdit_survey_georef.hide()
+            self.lineEdit_farm_nodes.hide()
             
             self.hide_show_more = True         
     
