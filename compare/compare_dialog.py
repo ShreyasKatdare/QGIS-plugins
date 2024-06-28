@@ -102,7 +102,15 @@ from PyQt5.QtCore import Qt
 from qgis.core import QgsVectorFileWriter
 
 class SideBar(QDockWidget):
+    
     def __init__(self, iface = None, parent = None ):
+        '''
+        This class is used to create a sidebar for the plugin. It contains the following functionalities:
+        1. Select two maps to compare
+        2. Select column to map polygons
+        3. Select column to compare
+        4. Compare the two maps
+        '''
         super(SideBar, self).__init__(parent)
         self.iface = iface
         self.map1 = None
@@ -174,12 +182,19 @@ class SideBar(QDockWidget):
         self.form_layout.addRow(self.compare_button)
         
     def add_spacer_to_layout(self):
+        '''
+        This function is used to add a spacer to the form layout
+        Just to make the UI look better
+        '''
         vbox = QVBoxLayout()
         spacer = QSpacerItem(20, 10, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
         vbox.addItem(spacer)
         self.form_layout.addRow(vbox)
 
     def on_remove_layer(self, layer_id):
+        '''
+        This function is used to remove the selected map for comparison from the sidebar label
+        '''
         print("layer removed")
         print(layer_id)
         
@@ -191,6 +206,9 @@ class SideBar(QDockWidget):
             self.label_select_2.setText("No map selected")    
     
     def select_first_map(self):
+        '''
+        This function is used to select the first map for comparison
+        '''
         self.map1 = self.iface.activeLayer()
         if self.map1 is None:
             self.failed_message("No map selected")
@@ -201,6 +219,9 @@ class SideBar(QDockWidget):
             self.add_common_columns()
         
     def select_second_map(self):
+        '''
+        This function is used to select the second map for comparison
+        '''
         self.map2 = self.iface.activeLayer()
         if self.map2 is None:
             self.failed_message("No map selected")
@@ -210,6 +231,9 @@ class SideBar(QDockWidget):
             self.add_common_columns()
         
     def failed_message(self, label):
+        '''
+        This function is used to display a message box with the given label
+        '''
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Information)
         msg.setText(label)
@@ -217,6 +241,9 @@ class SideBar(QDockWidget):
         msg.exec_()
         
     def common_columns(self):
+        '''
+        This function is used to get the common columns between the two maps
+        '''
         layer1 = self.map1
         layer2 = self.map2
         fields1 = [field.name() for field in layer1.fields()]
@@ -227,6 +254,9 @@ class SideBar(QDockWidget):
         return common_fields
     
     def add_common_columns(self):
+        '''
+        This function is used to add the common columns between the two maps to the combo boxes
+        '''
         columns = self.common_columns()
         self.combo_box_map.clear()
         self.combo_box_compare.clear()
@@ -235,6 +265,9 @@ class SideBar(QDockWidget):
         self.combo_box_compare.addItems(columns)
         
     def compare(self):
+        '''
+        This function is used to compare the two maps
+        '''
         if self.map1 is None or self.map2 is None:
             self.failed_message("Select both maps")
             return
@@ -247,11 +280,12 @@ class SideBar(QDockWidget):
         
         
     def select_common_features(self):
+        '''
+        This function is used to select the common features between the two maps using
+        the selected column to map polygons
+        '''
         print("map 1 ",self.map1.name())
         print("map 2 ",self.map2.name())
-        source = self.map1.source()
-        params = dict(i.split('=') for i in source.split(' ') if '=' in i)
-        print("Schema name of map1: ", params.get('schema'))
         self.map_column = self.combo_box_map.currentText()
         self.compare_column = self.combo_box_compare.currentText()
         self.common_features = []
@@ -273,6 +307,10 @@ class SideBar(QDockWidget):
         
         
     def generate_heatmap(self):
+        '''
+        This function is used to generate a heatmap of relative error for the comparison of the two maps
+        It generates a temporary layer with the comparison values and applies a graduated symbol renderer
+        '''
         colors = [(-100000, QColor('#ca0020')), (-5, QColor('#ec846e')), (-3, QColor('#f6d6c8')), (-1, QColor('#d3d3d3')), 
                 (1, QColor('#cfe3ed')), (3, QColor('#76b4d5')), (5, QColor('#0571b0')), (100000, QColor('white'))]
 

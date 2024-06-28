@@ -76,8 +76,13 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 
 class LineDrawTool(QgsMapToolEmitPoint):
-        
+    '''
+    This class is used to draw a line on the map canvas
+    '''
     def __init__(self, canvas, parent):
+        '''
+        Constructor
+        '''
         self.canvas = canvas
         self.parent = parent
         self.rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
@@ -88,6 +93,11 @@ class LineDrawTool(QgsMapToolEmitPoint):
         super(LineDrawTool, self).__init__(self.canvas)
 
     def canvasReleaseEvent(self, e):
+        '''
+        This method is called when the mouse is released
+        If the left button is clicked, a point is added to the rubber band
+        If the right button is clicked, the line is completed and the
+        '''
         if e.button() == Qt.LeftButton:
             self.points.append(self.toMapCoordinates(e.pos()))
             self.rubberBand.addPoint(self.points[-1])
@@ -98,17 +108,28 @@ class LineDrawTool(QgsMapToolEmitPoint):
             self.parent.buffer_line(self.parent.wid)
     
     def canvasPressEvent(self, e):
+        '''
+        This method is called when the mouse is pressed
+        If the right button is clicked, the line is completed
+        '''
         if e.button() == Qt.RightButton:
             self.canvas.unsetMapTool(self)
             self.line = self.rubberBand.asGeometry()
             self.parent.buffer_line(self.parent.wid)
 
     def canvasMoveEvent(self, e):
+        '''
+        This method is called when the mouse is moved
+        If the rubber band is present, it is moved to the new point
+        '''
         if self.rubberBand:
             self.rubberBand.movePoint(self.toMapCoordinates(e.pos()))
 
 
 class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
+    '''
+    This class creates the dialog for the plugin
+    '''
     def __init__(self, iface, parent=None):
         """Constructor."""
         super(farmcutterDialog, self).__init__(parent)
@@ -117,6 +138,9 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         # self.<objectname>, and you can use autoconnect slots - see
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
+        '''
+        Constructor
+        '''
         self.setupUi(self)
         self.iface = iface
         self.lineEdit_farmplots.setText('farmplots')
@@ -129,6 +153,10 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         QgsProject.instance().layerWillBeRemoved.connect(self.remove_line)        
 
     def load_map(self):
+        '''
+        This method is called when the OK button is clicked
+        It loads the map layer and adds it to the canvas
+        '''
         self.polytocut = []
         self.line = None
         self.wid = None
@@ -138,6 +166,7 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         self.rubber_bands = []
         self.line_tool = None
         
+        # Get the names of the village and map entered by the user from the text boxes 
         village = self.village_in.text()
         self.village = village
         self.map = self.lineEdit_farmplots.text()
@@ -173,11 +202,18 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
             
             
     def draw_line(self):
+        '''
+        This method is called when the "Start Cutting" button is clicked
+        It sets the map tool to LineDrawTool
+        '''
         self.line_tool = LineDrawTool(self.iface.mapCanvas(), self)
-        # self.line_tool.line_drawn.connect(self.select_poly)
         self.iface.mapCanvas().setMapTool(self.line_tool)
         
     def buffer_line(self, width):
+        '''
+        This method is called when the line is drawn
+        It creates a buffer around the line
+        '''
         for rb in self.rubber_bands:
             self.iface.mapCanvas().scene().removeItem(rb)
         self.rubber_bands = []
@@ -199,7 +235,9 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         return buffer
             
     def select_poly(self):
-        # layer = self.iface.mapCanvas().currentLayer()
+        '''
+        Selects the polygons that intersect the line and calls the cut_poly method
+        '''
         layer = self.layer
         line = self.line_tool.line
         self.line = line
@@ -214,6 +252,9 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
     
     
     def cut_poly(self):
+        '''
+        Cuts the selected polygons with the line buffer and adds the new polygons to the layer
+        '''
         layer = self.layer
         line = self.line
         layer.startEditing()
@@ -279,7 +320,13 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         self.remove_line()
     
     def calculate_varp(self, geom):
-        
+        '''
+        :param geom: QgsGeometry object
+        :return: float
+
+        Calculates the varp parameter of the feature
+        '''
+
         points_list = [vertex for vertex in geom.vertices()]
 
         points = points_list
@@ -303,10 +350,17 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
         return varp
     
     def buffer_width_changed(self):
+        '''
+        Every time the buffer width is changed, this method is called
+        It updates the buffer around the line
+        '''
         self.wid = self.side_bar.spin_box.value()
         self.buffer_line(self.wid)
     
     def remove_line(self):
+        '''
+        Removes the line from the canvas
+        '''
         for rb in self.rubber_bands:
             self.iface.mapCanvas().scene().removeItem(rb)
         self.rubber_bands = []
@@ -320,7 +374,13 @@ class farmcutterDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
 class SideBar(QDockWidget):
+    '''
+    This class creates the sidebar for the plugin
+    '''
     def __init__(self, parent):
+        '''
+        Constructor
+        '''
         super(SideBar, self).__init__(parent)
         self.parent = parent
         form_layout = QFormLayout()
@@ -368,12 +428,20 @@ class SideBar(QDockWidget):
         self.setWidget(widget)
         
     def buffer_changed(self):
+        '''
+        This method is called when the buffer width is changed
+        It calls the buffer_width_changed method of the parent
+        '''
         self.parent.buffer_width_changed()
-        # TODO : Add undo, reselect line, cut buttons 
         
     def save_layer_postgres(self):
+        '''
+        This method is called when the "Save to Postgres" button is clicked
+        It saves the layer to the Postgres database
+        '''
         print("saving...")
         schema = self.parent.village
+    
         if 'editing' in self.parent.map:
             table_name = self.parent.map
         else:
@@ -403,6 +471,10 @@ class SideBar(QDockWidget):
             
     
     def save_layer_locally(self):
+        '''
+        This method is called when the "Save Layer Locally" button is clicked
+        It saves the layer to the local file system
+        '''
         file_name, _ = QFileDialog.getSaveFileName(self, "Save Layer", "", "Shapefile (*.shp);;GeoJSON (*.geojson)")
         print("file_name : ", file_name)
         if file_name:

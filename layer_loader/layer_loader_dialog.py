@@ -68,8 +68,14 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 
 class layer_loaderDialog(QtWidgets.QDialog, FORM_CLASS):
+    '''
+    This class is the main dialog of the plugin. It is responsible for creating the main dialog
+    and handling the user inputs.
+    '''
     def __init__(self, parent=None):
-        """Constructor."""
+        """
+        Constructor.
+        """
         super(layer_loaderDialog, self).__init__(parent)
         # Set up the user interface from Designer through FORM_CLASS.
         # After self.setupUi() you can access any designer object by doing
@@ -158,6 +164,19 @@ class layer_loaderDialog(QtWidgets.QDialog, FORM_CLASS):
         
         
     def add_layer(self):
+        '''
+        This function is called when the user clicks the 'Add Layer' button. It adds a new layer to the dialog.
+        It creates a new row in the form layout with the following widgets:
+        - Layer Name: QLineEdit
+        - Select Symbology: QPushButton
+        - Symbology Label: QLabel
+        - Opacity: QSlider
+        - Select Color: QPushButton
+        - Color Label: QLabel
+        And connects the buttons to the appropriate functions.
+
+        '''
+        
         hbox1 = QHBoxLayout()
         hbox2 = QHBoxLayout()
         self.num_layer += 1
@@ -217,6 +236,11 @@ class layer_loaderDialog(QtWidgets.QDialog, FORM_CLASS):
         self.layer_names.append((layer_name, symbology_label, opacity_slider, color_label, sizewidth_button))
 
     def select_symbology(self, label):
+        '''
+        This function is called when the user clicks the 'Select Symbology' button.
+        It opens a dialog that allows the user to select a symbology for the layer.
+        The selected symbology is displayed in the symbology label.
+        '''
         symbology_dialog = SymbologySelectorDialog(self)
         
         if symbology_dialog.exec_():
@@ -224,13 +248,26 @@ class layer_loaderDialog(QtWidgets.QDialog, FORM_CLASS):
             label.setText(f'Selected: {selected_symbol}')
     
     def select_color(self, label):
+        '''
+        This function is called when the user clicks the 'Select Color' button.
+        It opens a color dialog that allows the user to select a color for the layer.
+        The selected color is displayed in the color label.
+        '''
         color_dialog = QColorDialog(self)
         color = color_dialog.getColor()
         label.setText(f'{color.name()}')
 #________________________________________________________________________________________
 
 class SymbologySelectorDialog(QDialog):
+    '''
+    This class is a dialog that allows the user to select a symbology for a layer.
+    It displays a grid of buttons, each representing a different symbology.
+    When the user clicks a button, the selected symbology is stored and the dialog is closed.
+    '''
     def __init__(self, parent=None):
+        '''
+        Here we create the dialog and set up the layout. Add buttons for each symbology.
+        '''
         super(SymbologySelectorDialog, self).__init__(parent)
         self.setWindowTitle('Select Symbology')
         self.layout = QVBoxLayout()
@@ -264,8 +301,15 @@ class SymbologySelectorDialog(QDialog):
         self.selected_symbol = None
     
     def button_clicked(self, id):
+        '''
+        This function is called when the user clicks a symbology button.
+        It stores the selected symbology and closes the dialog.
+        '''
         self.selected_symbol = self.symbols[id]
         self.accept()
 
     def get_selected_symbol(self):
+        '''
+        This function returns the selected symbology.
+        '''
         return self.selected_symbol

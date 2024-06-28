@@ -225,6 +225,25 @@ class layer_loader:
 
 
     def load_layers(self, map, symbology, opacity, color, size):
+        '''
+        :param map: Name of the layer to be loaded
+        :type map: str
+
+        :param symbology: Symbology of the layer to be loaded
+        :type symbology: str
+
+        :param opacity: Opacity of the layer to be loaded
+        :type opacity: float
+
+        :param color: Color of the layer to be loaded
+        :type color: str
+
+        :param size: Size of the layer to be loaded
+        :type size: float
+
+        Function to load layers in QGIS
+        '''
+        
         village = self.village
         
         if symbology == 'simple_fill':
@@ -300,7 +319,9 @@ class layer_loader:
             
     def run(self):
         """Run method that performs all the real work"""
-
+        '''
+        Loops through the layers and loads them in QGIS in the specified symbology
+        '''
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
         if self.first_start == True:
@@ -313,8 +334,7 @@ class layer_loader:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
+            
             self.layers = []
             self.village = self.dlg.village_name.text()
             self.user = self.dlg.lineEdit_user.text()
@@ -323,6 +343,7 @@ class layer_loader:
             self.host = self.dlg.lineEdit_host.text()
             self.port = self.dlg.lineEdit_port.text()
             
+            # get the layers from the dialog
             for layer in self.dlg.layer_names:
                 map = layer[0].text()
                 symbology = layer[1].text().rsplit(' ', 1)[-1]
@@ -335,9 +356,5 @@ class layer_loader:
                     g = random.randint(0, 255)
                     b = random.randint(0, 255)
                     color = QColor(r, g, b)
-                # print(map)
-                # print(symbology)
-                # print(opacity)
-                # print(color)
-                # print(size)
+                
                 self.load_layers(map, symbology, opacity, color, size)
